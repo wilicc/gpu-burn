@@ -84,9 +84,9 @@ void checkError(cublasStatus_t rCode, std::string desc = "") {
 			g_errorStrings[rCode];
 }
 
-class GPU_Test {
+template <class T> class GPU_Test {
 	public:
-	GPU_Test(int dev) : d_devNumber(dev) {
+	GPU_Test(int dev, bool doubles) : d_devNumber(dev), d_doubles(doubles) {
 		checkError(cuDeviceGet(&d_dev, d_devNumber));
 		checkError(cuCtxCreate(&d_ctx, 0, d_dev));
 
@@ -136,13 +136,14 @@ class GPU_Test {
 		return freeMem;
 	}
 
-	void initBuffers(float *A, float *B) {
+	void initBuffers(T *A, T *B) {
 		bind();
 
 		size_t useBytes = (size_t)((double)availMemory()*USEMEM);
-		printf("Initialized device %d with %lu MB of memory (%lu MB available, using %lu MB of it)\n",
-				d_devNumber, totalMemory()/1024ul/1024ul, availMemory()/1024ul/1024ul, useBytes/1024ul/1024ul);
-		size_t d_resultSize = sizeof(float)*SIZE*SIZE;
+		printf("Initialized device %d with %lu MB of memory (%lu MB available, using %lu MB of it), %s\n",
+				d_devNumber, totalMemory()/1024ul/1024ul, availMemory()/1024ul/1024ul, useBytes/1024ul/1024ul,
+				d_doubles ? "using DOUBLES" : "using FLOATS");
+		size_t d_resultSize = sizeof(T)*SIZE*SIZE;
 		d_iters = (useBytes - 2*d_resultSize)/d_resultSize; // We remove A and B sizes
 		//printf("Results are %d bytes each, thus performing %d iterations\n", d_resultSize, d_iters);
 		checkError(cuMemAlloc(&d_Cdata, d_iters*d_resultSize), "C alloc");
@@ -162,26 +163,37 @@ class GPU_Test {
 		bind();
 		static const float alpha = 1.0f;
 		static const float beta = 0.0f;
+		static const double alphaD = 1.0;
+		static const double betaD = 0.0;
 
 		for (size_t i = 0; i < d_iters; ++i) {
-			checkError(cublasSgemm(d_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-						SIZE, SIZE, SIZE, &alpha,
-						(const float*)d_Adata, SIZE,
-						(const float*)d_Bdata, SIZE,
-						&beta, 
-						(float*)d_Cdata + i*SIZE*SIZE, SIZE), "SGEMM");
+			if (d_doubles)
+				checkError(cublasDgemm(d_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+							SIZE, SIZE, SIZE, &alphaD,
+							(const double*)d_Adata, SIZE,
+							(const double*)d_Bdata, SIZE,
+							&betaD, 
+							(double*)d_Cdata + i*SIZE*SIZE, SIZE), "DGEMM");
+			else
+				checkError(cublasSgemm(d_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+							SIZE, SIZE, SIZE, &alpha,
+							(const float*)d_Adata, SIZE,
+							(const float*)d_Bdata, SIZE,
+							&beta, 
+							(float*)d_Cdata + i*SIZE*SIZE, SIZE), "SGEMM");
 		}
 	}
 
 	void initCompareKernel() {
 		checkError(cuModuleLoad(&d_module, "compare.ptx"), "load module");
-		checkError(cuModuleGetFunction(&d_function, d_module, "compare"), "get func");
+		checkError(cuModuleGetFunction(&d_function, d_module, 
+					d_doubles ? "compareD" : "compare"), "get func");
 
 		checkError(cuFuncSetCacheConfig(d_function, CU_FUNC_CACHE_PREFER_L1), "L1 config");
-		checkError(cuParamSetSize(d_function, __alignof(float*) + __alignof(int*) + __alignof(size_t)), "set param size");
-		checkError(cuParamSetv(d_function, 0, &d_Cdata, sizeof(float*)), "set param");
-		checkError(cuParamSetv(d_function, __alignof(float*), &d_faultyElemData, sizeof(float*)), "set param");
-		checkError(cuParamSetv(d_function, __alignof(float*) + __alignof(int*), &d_iters, sizeof(size_t)), "set param");
+		checkError(cuParamSetSize(d_function, __alignof(T*) + __alignof(int*) + __alignof(size_t)), "set param size");
+		checkError(cuParamSetv(d_function, 0, &d_Cdata, sizeof(T*)), "set param");
+		checkError(cuParamSetv(d_function, __alignof(T*), &d_faultyElemData, sizeof(T*)), "set param");
+		checkError(cuParamSetv(d_function, __alignof(T*) + __alignof(int*), &d_iters, sizeof(size_t)), "set param");
 
 		checkError(cuFuncSetBlockShape(d_function, g_blockSize, g_blockSize, 1), "set block size");
 	}
@@ -198,6 +210,7 @@ class GPU_Test {
 	}
 
 	private:
+	bool d_doubles;
 	int d_devNumber;
 	size_t d_iters;
 	size_t d_resultSize;
@@ -236,10 +249,10 @@ int initCuda() {
 	return deviceCount;
 }
 
-void startBurn(int index, int writeFd, float *A, float *B) {
-	GPU_Test *our;
+template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool doubles) {
+	GPU_Test<T> *our;
 	try {
-		our = new GPU_Test(index);
+		our = new GPU_Test<T>(index, doubles);
 		our->initBuffers(A, B);
 	} catch (std::string e) {
 		fprintf(stderr, "Couldn't init a GPU test: %s\n", e.c_str());
@@ -451,22 +464,16 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 		printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
 }
 
-int main(int argc, char **argv) {
-	int RUNLENGTH = 10;
-	if (argc < 2)
-		printf("Run length not specified in the command line.  Burning for 10 secs\n");
-	else 
-		RUNLENGTH = atoi(argv[1]);
-
+template<class T> void launch(int runLength, bool useDoubles) {
 	system("nvidia-smi -L");
 
 	// Initting A and B with random data
-	float *A = (float*) malloc(sizeof(float)*SIZE*SIZE);
-	float *B = (float*) malloc(sizeof(float)*SIZE*SIZE);
+	T *A = (T*) malloc(sizeof(T)*SIZE*SIZE);
+	T *B = (T*) malloc(sizeof(T)*SIZE*SIZE);
 	srand(10);
 	for (size_t i = 0; i < SIZE*SIZE; ++i) {
-		A[i] = (float)((double)(rand()%1000000)/100000.0);
-		B[i] = (float)((double)(rand()%1000000)/100000.0);
+		A[i] = (T)((double)(rand()%1000000)/100000.0);
+		B[i] = (T)((double)(rand()%1000000)/100000.0);
 	}
 
 	// Forking a process..  This one checks the number of devices to use,
@@ -486,10 +493,10 @@ int main(int argc, char **argv) {
 		int devCount = initCuda();
 		write(writeFd, &devCount, sizeof(int));
 
-		startBurn(0, writeFd, A, B);
+		startBurn<T>(0, writeFd, A, B, useDoubles);
 
 		close(writeFd);
-		return 0;
+		return;
 	} else {
 		clientPids.push_back(myPid);
 
@@ -512,17 +519,17 @@ int main(int argc, char **argv) {
 					// Child
 					close(slavePipe[0]);
 					initCuda();
-					startBurn(i, slavePipe[1], A, B);
+					startBurn<T>(i, slavePipe[1], A, B, useDoubles);
 
 					close(slavePipe[1]);
-					return 0;
+					return;
 				} else {
 					clientPids.push_back(slavePid);
 					close(slavePipe[1]);
 				}
 			}
 			
-			listenClients(clientPipes, clientPids, RUNLENGTH);
+			listenClients(clientPipes, clientPids, runLength);
 		}
 	}
 
@@ -531,6 +538,25 @@ int main(int argc, char **argv) {
 
 	free(A);
 	free(B);
+}
+
+int main(int argc, char **argv) {
+	int runLength = 10;
+	bool useDoubles = false;
+	int thisParam = 0;
+	if (argc >= 2 && std::string(argv[1]) == "-d") {
+			useDoubles = true;
+			thisParam++;
+		}
+	if (argc-thisParam < 2)
+		printf("Run length not specified in the command line.  Burning for 10 secs\n");
+	else 
+		runLength = atoi(argv[1+thisParam]);
+
+	if (useDoubles)
+		launch<double>(runLength, useDoubles);
+	else
+		launch<float>(runLength, useDoubles);
 
 	return 0;
 }
