@@ -27,8 +27,12 @@
  * either expressed or implied, of the FreeBSD Project.
  */
 
-#define SIZE 1024ul // Matrices are SIZE*SIZE..  1024^2 should be efficiently implemented in CUBLAS
+#define SIZE 2048ul // Matrices are SIZE*SIZE..  2048^2 should be efficiently implemented in CUBLAS
 #define USEMEM 0.9 // Try to allocate 90% of memory
+
+// Used to report op/s, measured through Visual Profiler, CUBLAS from CUDA 7.5
+// (Seems that they indeed take the naive dim^3 approach)
+#define OPS_PER_MUL 17188257792ul
 
 #include <cstdio>
 #include <string>
@@ -39,6 +43,7 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 #include <cuda.h>
 #include "cublas_v2.h"
@@ -369,20 +374,31 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 	std::vector<int> clientTemp;
 	std::vector<int> clientErrors;
 	std::vector<int> clientCalcs;
+	std::vector<struct timespec> clientUpdateTime;
+	std::vector<float> clientGflops;
 	std::vector<bool> clientFaulty;
+
+	time_t startTime = time(0);
 
 	for (size_t i = 0; i < clientFd.size(); ++i) {
 		clientTemp.push_back(0);
 		clientErrors.push_back(0);
 		clientCalcs.push_back(0);
+		struct timespec thisTime;
+		clock_gettime(CLOCK_REALTIME, &thisTime);
+		clientUpdateTime.push_back(thisTime);
+		clientGflops.push_back(0.0f);
 		clientFaulty.push_back(false);
 	}
 	
-	time_t startTime = time(0);
 	int changeCount;
 	float nextReport = 10.0f;
 	bool childReport = false;
 	while ((changeCount = select(maxHandle+1, &waitHandles, NULL, NULL, NULL))) {
+		size_t thisTime = time(0);
+		struct timespec thisTimeSpec;
+		clock_gettime(CLOCK_REALTIME, &thisTimeSpec);
+
 		//printf("got new data! %d\n", changeCount);
 		// Going through all descriptors
 		for (size_t i = 0; i < clientFd.size(); ++i)
@@ -397,7 +413,15 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 				if (processed == -1)
 					clientCalcs.at(i) = -1;
 				else
+				{
+					double flops = (double)processed * (double)OPS_PER_MUL;
+					struct timespec clientPrevTime = clientUpdateTime.at(i);
+					double clientTimeDelta = (double)thisTimeSpec.tv_sec + (double)thisTimeSpec.tv_nsec / 1000000000.0 - ((double)clientPrevTime.tv_sec + (double)clientPrevTime.tv_nsec / 1000000000.0);
+					clientUpdateTime.at(i) = thisTimeSpec;
+
+					clientGflops.at(i) = (double)((unsigned long long int)processed * OPS_PER_MUL) / clientTimeDelta / 1000.0 / 1000.0 / 1000.0;
 					clientCalcs.at(i) += processed;
+				}
 
 				childReport = true;
 			}
@@ -413,11 +437,11 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 
 		// Printing progress (if a child has initted already)
 		if (childReport) {
-			float elapsed = fminf((float)(time(0)-startTime)/(float)runTime*100.0f, 100.0f);
+			float elapsed = fminf((float)(thisTime-startTime)/(float)runTime*100.0f, 100.0f);
 			printf("\r%.1f%%  ", elapsed);
 			printf("proc'd: ");
 			for (size_t i = 0; i < clientCalcs.size(); ++i) {
-				printf("%d ", clientCalcs.at(i));
+				printf("%d (%.0f Gflop/s)", clientCalcs.at(i), clientGflops.at(i));
 				if (i != clientCalcs.size() - 1)
 					printf("/ ");
 			}
@@ -468,7 +492,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 			exit(123);
 		}
 
-		if (startTime + runTime < time(0))
+		if (startTime + runTime < thisTime)
 			break;
 	}
 
