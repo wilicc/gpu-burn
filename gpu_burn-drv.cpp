@@ -441,9 +441,9 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 			printf("\r%.1f%%  ", elapsed);
 			printf("proc'd: ");
 			for (size_t i = 0; i < clientCalcs.size(); ++i) {
-				printf("%d (%.0f Gflop/s)", clientCalcs.at(i), clientGflops.at(i));
+				printf("%d (%.0f Gflop/s) ", clientCalcs.at(i), clientGflops.at(i));
 				if (i != clientCalcs.size() - 1)
-					printf("/ ");
+					printf("- ");
 			}
 			printf("  errors: ");
 			for (size_t i = 0; i < clientErrors.size(); ++i) {
@@ -455,13 +455,13 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 
 				printf(note.c_str(), clientErrors.at(i));
 				if (i != clientCalcs.size() - 1)
-					printf("/ ");
+					printf("- ");
 			}
 			printf("  temps: ");
 			for (size_t i = 0; i < clientTemp.size(); ++i) {
 				printf(clientTemp.at(i) != 0 ? "%d C " : "-- ", clientTemp.at(i));
 				if (i != clientCalcs.size() - 1)
-					printf("/ ");
+					printf("- ");
 			}
 			
 			fflush(stdout);
