@@ -318,7 +318,7 @@ void updateTemps(int handle, std::vector<int> *temps) {
 
 	int tempValue;
 	// FIXME: The syntax of this print might change in the future..
-	if (sscanf(data, "        Gpu                     : %d C", &tempValue) == 1) {
+	if (sscanf(data, "        GPU Current Temp            : %d C", &tempValue) == 1) {
 		//printf("read temp val %d\n", tempValue);
 		temps->at(gpuIter) = tempValue;
 		gpuIter = (gpuIter+1)%(temps->size());
