@@ -44,6 +44,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <fstream>
 
 #include <cuda.h>
 #include "cublas_v2.h"
@@ -214,7 +215,12 @@ template <class T> class GPU_Test {
 	}
 
 	void initCompareKernel() {
-		checkError(cuModuleLoad(&d_module, "compare.ptx"), "load module");
+		const char *kernelFile = "compare.ptx";
+		{
+			std::ifstream f(kernelFile);
+			checkError(f.good() ? CUDA_SUCCESS : CUDA_ERROR_NOT_FOUND, std::string("couldn't find file \"") + kernelFile + "\" from working directory");
+		}
+		checkError(cuModuleLoad(&d_module, kernelFile), "load module");
 		checkError(cuModuleGetFunction(&d_function, d_module, 
 					d_doubles ? "compareD" : "compare"), "get func");
 
