@@ -41,6 +41,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/time.h>
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
@@ -114,6 +115,13 @@ void checkError(cublasStatus_t rCode, std::string desc = "") {
 			g_errorStrings[rCode];
 }
 
+double getTime()
+{
+	struct timeval t;
+	gettimeofday(&t, NULL);
+	return (double)t.tv_sec + (double)t.tv_usec / 1e6;
+}
+
 template <class T> class GPU_Test {
 	public:
 	GPU_Test(int dev, bool doubles) : d_devNumber(dev), d_doubles(doubles) {
@@ -125,6 +133,7 @@ template <class T> class GPU_Test {
 		//checkError(cublasInit());
 		checkError(cublasCreate(&d_cublas), "init");
 
+		checkError(cuMemAllocHost((void**)&d_faultyElemsHost, sizeof(int)));
 		d_error = 0;
 	}
 	~GPU_Test() {
@@ -132,6 +141,7 @@ template <class T> class GPU_Test {
 		checkError(cuMemFree(d_Cdata), "Free A");
 		checkError(cuMemFree(d_Adata), "Free B");
 		checkError(cuMemFree(d_Bdata), "Free C");
+		free(d_faultyElemsHost);
 		printf("Freed memory for dev %d\n", d_devNumber);
 
 		cublasDestroy(d_cublas);
@@ -139,6 +149,9 @@ template <class T> class GPU_Test {
 	}
 
 	unsigned long long int getErrors() {
+		if (*d_faultyElemsHost) {
+			d_error += (long long int)*d_faultyElemsHost;
+		}
 		unsigned long long int tempErrs = d_error;
 		d_error = 0;
 		return tempErrs;
@@ -234,14 +247,9 @@ template <class T> class GPU_Test {
 	}
 
 	void compare() {
-		int faultyElems;
-		checkError(cuMemsetD32(d_faultyElemData, 0, 1), "memset");
-		checkError(cuLaunchGrid(d_function, SIZE/g_blockSize, SIZE/g_blockSize), "Launch grid");
-		checkError(cuMemcpyDtoH(&faultyElems, d_faultyElemData, sizeof(int)), "Read faultyelemdata");
-		if (faultyElems) {
-			d_error += (long long int)faultyElems;
-			//printf("WE FOUND %d FAULTY ELEMENTS from GPU %d\n", faultyElems, d_devNumber);
-		}
+		checkError(cuMemsetD32Async(d_faultyElemData, 0, 1, 0), "memset");
+		checkError(cuLaunchGridAsync(d_function, SIZE/g_blockSize, SIZE/g_blockSize, 0), "Launch grid");
+		checkError(cuMemcpyDtoHAsync(d_faultyElemsHost, d_faultyElemData, sizeof(int), 0), "Read faultyelemdata");
 	}
 
 	private:
@@ -263,6 +271,7 @@ template <class T> class GPU_Test {
 	CUdeviceptr d_Adata;
 	CUdeviceptr d_Bdata;
 	CUdeviceptr d_faultyElemData;
+	int *d_faultyElemsHost;
 
 	cublasHandle_t d_cublas;
 };
@@ -295,18 +304,31 @@ template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool double
 	}
 
 	// The actual work
-	/*int iters = 0;
-	unsigned long long int errors = 0;*/
 	try {
+		int eventIndex = 0;
+		const int maxEvents = 2;
+		CUevent events[maxEvents];
+		for (int i = 0; i < maxEvents; ++i)
+			cuEventCreate(events + i, 0);
+
+		int nonWorkIters = maxEvents;
+
 		while (true) {
 			our->compute();
 			our->compare();
-			/*errors += our->getErrors();
-			iters++;*/
+			checkError(cuEventRecord(events[eventIndex], 0), "Record event");
+
+			eventIndex = ++eventIndex % maxEvents;
+
+			while (cuEventQuery(events[eventIndex]) != CUDA_SUCCESS) usleep(1000);
+
+			if (--nonWorkIters > 0) continue;
+
 			int ops = our->getIters();
 			write(writeFd, &ops, sizeof(int));
 			ops = our->getErrors();
 			write(writeFd, &ops, sizeof(int));
+
 		}
 	} catch (std::string e) {
 		fprintf(stderr, "Failure during compute: %s\n", e.c_str());
