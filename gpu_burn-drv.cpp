@@ -1,16 +1,16 @@
-/* 
+/*
  * Copyright (c) 2016, Ville Timonen
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * 1. Redistributions of source code must retain the above copyright notice, this
  *    list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -21,7 +21,7 @@
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * The views and conclusions contained in the software and documentation are those
  * of the authors and should not be interpreted as representing official policies,
  * either expressed or implied, of the FreeBSD Project.
@@ -90,9 +90,9 @@ void checkError(int rCode, std::string desc = "") {
 	}
 
 	if (rCode != CUDA_SUCCESS)
-		throw ((desc == "") ? 
-				std::string("Error: ") : 
-				(std::string("Error in \"") + desc + std::string("\": "))) + 
+		throw ((desc == "") ?
+				std::string("Error: ") :
+				(std::string("Error in \"") + desc + std::string("\": "))) +
 			g_errorStrings[rCode];
 }
 
@@ -109,9 +109,9 @@ void checkError(cublasStatus_t rCode, std::string desc = "") {
 	}
 
 	if (rCode != CUBLAS_STATUS_SUCCESS)
-		throw ((desc == "") ? 
-				std::string("Error: ") : 
-				(std::string("Error in \"") + desc + std::string("\": "))) + 
+		throw ((desc == "") ?
+				std::string("Error: ") :
+				(std::string("Error in \"") + desc + std::string("\": "))) +
 			g_errorStrings[rCode];
 }
 
@@ -215,14 +215,14 @@ template <class T> class GPU_Test {
 							SIZE, SIZE, SIZE, &alphaD,
 							(const double*)d_Adata, SIZE,
 							(const double*)d_Bdata, SIZE,
-							&betaD, 
+							&betaD,
 							(double*)d_Cdata + i*SIZE*SIZE, SIZE), "DGEMM");
 			else
 				checkError(cublasSgemm(d_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
 							SIZE, SIZE, SIZE, &alpha,
 							(const float*)d_Adata, SIZE,
 							(const float*)d_Bdata, SIZE,
-							&beta, 
+							&beta,
 							(float*)d_Cdata + i*SIZE*SIZE, SIZE), "SGEMM");
 		}
 	}
@@ -234,7 +234,7 @@ template <class T> class GPU_Test {
 			checkError(f.good() ? CUDA_SUCCESS : CUDA_ERROR_NOT_FOUND, std::string("couldn't find file \"") + kernelFile + "\" from working directory");
 		}
 		checkError(cuModuleLoad(&d_module, kernelFile), "load module");
-		checkError(cuModuleGetFunction(&d_function, d_module, 
+		checkError(cuModuleGetFunction(&d_function, d_module,
 					d_doubles ? "compareD" : "compare"), "get func");
 
 		checkError(cuFuncSetCacheConfig(d_function, CU_FUNC_CACHE_PREFER_L1), "L1 config");
@@ -343,7 +343,7 @@ template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool double
 int pollTemp(pid_t *p) {
 	int tempPipe[2];
 	pipe(tempPipe);
-	
+
 	pid_t myPid = fork();
 
 	if (!myPid) {
@@ -351,7 +351,7 @@ int pollTemp(pid_t *p) {
 		dup2(tempPipe[1], STDOUT_FILENO); // Stdout
 		execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d", "TEMPERATURE", NULL);
 		fprintf(stderr, "Could not invoke nvidia-smi, no temps available\n");
-		
+
 		exit(0);
 	}
 
@@ -385,7 +385,7 @@ void updateTemps(int handle, std::vector<int> *temps) {
 
 void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int runTime) {
 	fd_set waitHandles;
-	
+
 	pid_t tempPid;
 	int tempHandle = pollTemp(&tempPid);
 	int maxHandle = tempHandle;
@@ -418,7 +418,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 		clientGflops.push_back(0.0f);
 		clientFaulty.push_back(false);
 	}
-	
+
 	int changeCount;
 	float nextReport = 10.0f;
 	bool childReport = false;
@@ -456,7 +456,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 
 		if (FD_ISSET(tempHandle, &waitHandles))
 			updateTemps(tempHandle, &clientTemp);
-		
+
 		// Resetting the listeners
 		FD_ZERO(&waitHandles);
 		FD_SET(tempHandle, &waitHandles);
@@ -491,7 +491,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 				if (i != clientCalcs.size() - 1)
 					printf("- ");
 			}
-			
+
 			fflush(stdout);
 
 			if (nextReport < elapsed) {
@@ -528,7 +528,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 	fflush(stdout);
 	for (size_t i = 0; i < clientPid.size(); ++i)
 		kill(clientPid.at(i), 15);
-	
+
 	kill(tempPid, 15);
 	close(tempHandle);
 
@@ -582,6 +582,7 @@ template<class T> void launch(int runLength, bool useDoubles) {
 
 		if (!devCount) {
 			fprintf(stderr, "No CUDA devices\n");
+      exit(EXIT_FAILURE);
 		} else {
 
 			for (int i = 1; i < devCount; ++i) {
@@ -604,7 +605,7 @@ template<class T> void launch(int runLength, bool useDoubles) {
 					close(slavePipe[1]);
 				}
 			}
-			
+
 			listenClients(clientPipes, clientPids, runLength);
 		}
 	}
@@ -626,7 +627,7 @@ int main(int argc, char **argv) {
 		}
 	if (argc-thisParam < 2)
 		printf("Run length not specified in the command line.  Burning for 10 secs\n");
-	else 
+	else
 		runLength = atoi(argv[1+thisParam]);
 
 	if (useDoubles)
