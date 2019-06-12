@@ -582,7 +582,7 @@ template<class T> void launch(int runLength, bool useDoubles) {
 
 		if (!devCount) {
 			fprintf(stderr, "No CUDA devices\n");
-      exit(EXIT_FAILURE);
+			exit(EXIT_FAILURE);
 		} else {
 
 			for (int i = 1; i < devCount; ++i) {
