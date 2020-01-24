@@ -141,7 +141,7 @@ template <class T> class GPU_Test {
 		checkError(cuMemFree(d_Cdata), "Free A");
 		checkError(cuMemFree(d_Adata), "Free B");
 		checkError(cuMemFree(d_Bdata), "Free C");
-		free(d_faultyElemsHost);
+		cuMemFreeHost(d_faultyElemsHost);
 		printf("Freed memory for dev %d\n", d_devNumber);
 
 		cublasDestroy(d_cublas);
