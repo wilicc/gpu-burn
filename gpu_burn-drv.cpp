@@ -122,6 +122,8 @@ double getTime()
 	return (double)t.tv_sec + (double)t.tv_usec / 1e6;
 }
 
+bool g_running = false;
+
 template <class T> class GPU_Test {
 	public:
 	GPU_Test(int dev, bool doubles) : d_devNumber(dev), d_doubles(doubles) {
@@ -135,6 +137,13 @@ template <class T> class GPU_Test {
 
 		checkError(cuMemAllocHost((void**)&d_faultyElemsHost, sizeof(int)));
 		d_error = 0;
+
+		g_running = true;
+
+		struct sigaction action;
+		memset(&action, 0, sizeof(struct sigaction));
+		action.sa_handler = termHandler;
+		sigaction(SIGTERM, &action, NULL);
 	}
 	~GPU_Test() {
 		bind();
@@ -146,6 +155,11 @@ template <class T> class GPU_Test {
 
 		cublasDestroy(d_cublas);
 		printf("Uninitted cublas\n");
+	}
+
+	static void termHandler(int signum)
+	{
+		g_running = false;
 	}
 
 	unsigned long long int getErrors() {
@@ -252,6 +266,11 @@ template <class T> class GPU_Test {
 		checkError(cuMemcpyDtoHAsync(d_faultyElemsHost, d_faultyElemData, sizeof(int), 0), "Read faultyelemdata");
 	}
 
+	bool shouldRun()
+	{
+		return g_running;
+	}
+
 	private:
 	bool d_doubles;
 	int d_devNumber;
@@ -313,7 +332,7 @@ template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool double
 
 		int nonWorkIters = maxEvents;
 
-		while (true) {
+		while (our->shouldRun()) {
 			our->compute();
 			our->compare();
 			checkError(cuEventRecord(events[eventIndex], 0), "Record event");
@@ -328,8 +347,11 @@ template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool double
 			write(writeFd, &ops, sizeof(int));
 			ops = our->getErrors();
 			write(writeFd, &ops, sizeof(int));
-
 		}
+
+		for (int i = 0; i < maxEvents; ++i)
+			cuEventSynchronize(events[i]);
+		delete our;
 	} catch (std::string e) {
 		fprintf(stderr, "Failure during compute: %s\n", e.c_str());
 		int ops = -1;
@@ -582,6 +604,7 @@ template<class T> void launch(int runLength, bool useDoubles) {
 
 		if (!devCount) {
 			fprintf(stderr, "No CUDA devices\n");
+			exit(EXIT_FAILURE);
 		} else {
 
 			for (int i = 1; i < devCount; ++i) {
