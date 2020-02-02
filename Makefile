@@ -3,7 +3,7 @@ CUDAPATH=/usr/local/cuda
 # Have this point to an old enough gcc (for nvcc)
 GCCPATH=/usr
 
-NVCC=nvcc
+NVCC=${CUDAPATH}/bin/nvcc
 CCPATH=${GCCPATH}/bin
 
 drv:
