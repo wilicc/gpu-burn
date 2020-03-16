@@ -126,7 +126,8 @@ bool g_running = false;
 
 template <class T> class GPU_Test {
 	public:
-	GPU_Test(int dev, bool doubles) : d_devNumber(dev), d_doubles(doubles) {
+	GPU_Test(int dev, bool doubles, bool tensors) : 
+			d_devNumber(dev), d_doubles(doubles), d_tensors(tensors) {
 		checkError(cuDeviceGet(&d_dev, d_devNumber));
 		checkError(cuCtxCreate(&d_ctx, 0, d_dev));
 
@@ -134,6 +135,9 @@ template <class T> class GPU_Test {
 
 		//checkError(cublasInit());
 		checkError(cublasCreate(&d_cublas), "init");
+
+		if(d_tensors)
+			checkError(cublasSetMathMode(d_cublas, CUBLAS_TENSOR_OP_MATH));
 
 		checkError(cuMemAllocHost((void**)&d_faultyElemsHost, sizeof(int)));
 		d_error = 0;
@@ -197,9 +201,9 @@ template <class T> class GPU_Test {
 		bind();
 
 		size_t useBytes = (size_t)((double)availMemory()*USEMEM);
-		printf("Initialized device %d with %lu MB of memory (%lu MB available, using %lu MB of it), %s\n",
+		printf("Initialized device %d with %lu MB of memory (%lu MB available, using %lu MB of it), %s%s\n",
 				d_devNumber, totalMemory()/1024ul/1024ul, availMemory()/1024ul/1024ul, useBytes/1024ul/1024ul,
-				d_doubles ? "using DOUBLES" : "using FLOATS");
+				d_doubles ? "using DOUBLES" : "using FLOATS", d_tensors ? ", using Tensor Cores" : "");
 		size_t d_resultSize = sizeof(T)*SIZE*SIZE;
 		d_iters = (useBytes - 2*d_resultSize)/d_resultSize; // We remove A and B sizes
 		//printf("Results are %d bytes each, thus performing %d iterations\n", d_resultSize, d_iters);
@@ -273,6 +277,7 @@ template <class T> class GPU_Test {
 
 	private:
 	bool d_doubles;
+	bool d_tensors;
 	int d_devNumber;
 	size_t d_iters;
 	size_t d_resultSize;
@@ -312,10 +317,10 @@ int initCuda() {
 	return deviceCount;
 }
 
-template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool doubles) {
+template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors) {
 	GPU_Test<T> *our;
 	try {
-		our = new GPU_Test<T>(index, doubles);
+		our = new GPU_Test<T>(index, doubles, tensors);
 		our->initBuffers(A, B);
 	} catch (std::string e) {
 		fprintf(stderr, "Couldn't init a GPU test: %s\n", e.c_str());
@@ -562,7 +567,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 		printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
 }
 
-template<class T> void launch(int runLength, bool useDoubles) {
+template<class T> void launch(int runLength, bool useDoubles, bool useTensorCores) {
 	system("nvidia-smi -L");
 
 	// Initting A and B with random data
@@ -591,7 +596,7 @@ template<class T> void launch(int runLength, bool useDoubles) {
 		int devCount = initCuda();
 		write(writeFd, &devCount, sizeof(int));
 
-		startBurn<T>(0, writeFd, A, B, useDoubles);
+		startBurn<T>(0, writeFd, A, B, useDoubles, useTensorCores);
 
 		close(writeFd);
 		return;
@@ -618,7 +623,7 @@ template<class T> void launch(int runLength, bool useDoubles) {
 					// Child
 					close(slavePipe[0]);
 					initCuda();
-					startBurn<T>(i, slavePipe[1], A, B, useDoubles);
+					startBurn<T>(i, slavePipe[1], A, B, useDoubles, useTensorCores);
 
 					close(slavePipe[1]);
 					return;
@@ -642,20 +647,35 @@ template<class T> void launch(int runLength, bool useDoubles) {
 int main(int argc, char **argv) {
 	int runLength = 10;
 	bool useDoubles = false;
+	bool useTensorCores = false;
 	int thisParam = 0;
-	if (argc >= 2 && std::string(argv[1]) == "-d") {
+
+	std::vector<std::string> args(argv, argv + argc);
+	for (size_t i = 1; i < args.size(); ++i)
+	{
+		if (argc >= 2 && std::string(argv[i]).find("-d") != std::string::npos)
+		{
 			useDoubles = true;
 			thisParam++;
 		}
+		if (argc >= 2 && std::string(argv[i]).find("-tc") != std::string::npos)
+		{
+			useTensorCores = true;
+			thisParam++;
+		}
+	}
+	
+	printf("%d %d", useDoubles, useTensorCores);
+
 	if (argc-thisParam < 2)
 		printf("Run length not specified in the command line.  Burning for 10 secs\n");
 	else 
 		runLength = atoi(argv[1+thisParam]);
 
 	if (useDoubles)
-		launch<double>(runLength, useDoubles);
+		launch<double>(runLength, useDoubles, useTensorCores);
 	else
-		launch<float>(runLength, useDoubles);
+		launch<float>(runLength, useDoubles, useTensorCores);
 
 	return 0;
 }
