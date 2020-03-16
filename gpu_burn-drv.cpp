@@ -665,8 +665,6 @@ int main(int argc, char **argv) {
 		}
 	}
 	
-	printf("%d %d", useDoubles, useTensorCores);
-
 	if (argc-thisParam < 2)
 		printf("Run length not specified in the command line.  Burning for 10 secs\n");
 	else 
