@@ -1,4 +1,4 @@
-CUDAPATH=/usr/local/cuda
+CUDAPATH ?= /usr/local/cuda
 
 # Have this point to an old enough gcc (for nvcc)
 GCCPATH=/usr
