@@ -6,12 +6,20 @@ GCCPATH=/usr
 NVCC=${CUDAPATH}/bin/nvcc
 CCPATH=${GCCPATH}/bin
 
+LDFLAGS := -lcuda
+LDFLAGS += -L${CUDAPATH}/lib64
+LDFLAGS += -L${CUDAPATH}/lib
+LDFLAGS += -Wl,-rpath=${CUDAPATH}/lib64
+LDFLAGS += -Wl,-rpath=${CUDAPATH}/lib
+LDFLAGS += -lcublas
+LDFLAGS += -lcudart
+
 COMPUTE ?= 50
 
 .PHONY: clean
 
 gpu_burn: gpu_burn-drv.o compare.ptx
-	g++ -o gpu_burn gpu_burn-drv.o -O3 -lcuda -L${CUDAPATH}/lib64 -L${CUDAPATH}/lib -Wl,-rpath=${CUDAPATH}/lib64 -Wl,-rpath=${CUDAPATH}/lib -lcublas -lcudart
+	g++ -o $@ $< -O3 ${LDFLAGS}
 
 gpu_burn-drv.o: gpu_burn-drv.cpp
 	g++ -O3 -Wno-unused-result -I${CUDAPATH}/include -c $<
