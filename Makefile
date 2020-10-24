@@ -1,10 +1,7 @@
 CUDAPATH=/usr/local/cuda
 
-# Have this point to an old enough gcc (for nvcc)
-GCCPATH=/usr
-
 NVCC=${CUDAPATH}/bin/nvcc
-CCPATH=${GCCPATH}/bin
+CCPATH ?=
 
 CFLAGS  ?=
 CFLAGS  += -O3
@@ -31,7 +28,7 @@ gpu_burn: gpu_burn-drv.o compare.ptx
 	g++ ${CFLAGS} -c $<
 
 %.ptx: %.cu
-	PATH=${PATH}:.:${CCPATH} ${NVCC} -I${CUDAPATH}/include -arch=compute_$(subst .,,${COMPUTE}) -ptx $< -o $@
+	PATH=${PATH}:${CCPATH}:. ${NVCC} -I${CUDAPATH}/include -arch=compute_$(subst .,,${COMPUTE}) -ptx $< -o $@
 
 clean:
 	$(RM) *.ptx *.o gpu_burn
