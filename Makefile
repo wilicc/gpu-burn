@@ -12,3 +12,6 @@ drv: compare.ptx
 
 compare.ptx: compare.cu
 	PATH=${PATH}:.:${CCPATH}:${PATH} ${NVCC} -I${CUDAPATH}/include -arch=compute_50 -ptx $< -o $@
+
+clean:
+	$(RM) *.ptx *.o gpu_burn
