@@ -6,11 +6,13 @@ GCCPATH=/usr
 NVCC=${CUDAPATH}/bin/nvcc
 CCPATH=${GCCPATH}/bin
 
-CFLAGS  := -O3
+CFLAGS  ?=
+CFLAGS  += -O3
 CFLAGS  += -Wno-unused-result
 CFLAGS  += -I${CUDAPATH}/include
 
-LDFLAGS := -lcuda
+LDFLAGS ?=
+LDFLAGS += -lcuda
 LDFLAGS += -L${CUDAPATH}/lib64
 LDFLAGS += -L${CUDAPATH}/lib
 LDFLAGS += -Wl,-rpath=${CUDAPATH}/lib64
