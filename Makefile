@@ -27,10 +27,10 @@ COMPUTE ?= 50
 gpu_burn: gpu_burn-drv.o compare.ptx
 	g++ -o $@ $< -O3 ${LDFLAGS}
 
-gpu_burn-drv.o: gpu_burn-drv.cpp
+%.o: %.cpp
 	g++ ${CFLAGS} -c $<
 
-compare.ptx: compare.cu
+%.ptx: %.cu
 	PATH=${PATH}:.:${CCPATH}:${PATH} ${NVCC} -I${CUDAPATH}/include -arch=compute_$(subst .,,${COMPUTE}) -ptx $< -o $@
 
 clean:
