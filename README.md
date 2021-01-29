@@ -41,3 +41,15 @@ CCPATH can be specified to point to a specific gcc (default is
 /usr/bin):
 
 `make CCPATH=/usr/local/bin`
+
+# Usage
+
+    GPU Burn
+    Usage: gpu_burn [OPTIONS] [TIME]
+    
+    -d	Use doubles
+    -tc	Use Tensor cores
+    -h	Show this help message
+    
+    Example:
+    gpu-burn -d 3600

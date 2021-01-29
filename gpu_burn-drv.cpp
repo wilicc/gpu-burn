@@ -644,6 +644,16 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 	free(B);
 }
 
+void showHelp() {
+	printf("GPU Burn\n");
+	printf("Usage: gpu_burn [OPTIONS] [TIME]\n\n");
+	printf("-d\tUse doubles\n");
+	printf("-tc\tUse Tensor cores\n");
+	printf("-h\tShow this help message\n\n");
+	printf("Example:\n");
+	printf("gpu-burn -d 3600\n");
+}
+
 int main(int argc, char **argv) {
 	int runLength = 10;
 	bool useDoubles = false;
@@ -653,6 +663,11 @@ int main(int argc, char **argv) {
 	std::vector<std::string> args(argv, argv + argc);
 	for (size_t i = 1; i < args.size(); ++i)
 	{
+		if (argc >= 2 && std::string(argv[i]).find("-h") != std::string::npos)
+		{
+			showHelp();
+			return 0;
+		}
 		if (argc >= 2 && std::string(argv[i]).find("-d") != std::string::npos)
 		{
 			useDoubles = true;
