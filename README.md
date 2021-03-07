@@ -35,7 +35,7 @@ CUDAPATH can be added to point to a non standard install or
 specific version of the cuda toolkit (default is 
 /usr/local/cuda):
 
-`make CUDAPATH=/usr/loca/cuda-<version>`
+`make CUDAPATH=/usr/local/cuda-<version>`
 
 CCPATH can be specified to point to a specific gcc (default is
 /usr/bin):
