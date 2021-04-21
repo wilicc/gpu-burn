@@ -36,3 +36,6 @@ gpu_burn: gpu_burn-drv.o compare.ptx
 
 clean:
 	$(RM) *.ptx *.o gpu_burn
+
+image:
+	docker build -t gpu-burn .
