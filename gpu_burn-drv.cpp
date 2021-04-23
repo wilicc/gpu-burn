@@ -35,6 +35,7 @@
 #define OPS_PER_MUL 17188257792ul
 
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <map>
 #include <vector>
@@ -197,16 +198,22 @@ template <class T> class GPU_Test {
 		return freeMem;
 	}
 
-	void initBuffers(T *A, T *B) {
+	void initBuffers(T *A, T *B, ssize_t useBytes=0) {
 		bind();
 
-		size_t useBytes = (size_t)((double)availMemory()*USEMEM);
+		if(useBytes == 0)
+            useBytes = (ssize_t)((double)availMemory()*USEMEM);
+		if(useBytes < 0)
+           useBytes = (ssize_t)((double)availMemory()*(-useBytes/100.0));
+
 		printf("Initialized device %d with %lu MB of memory (%lu MB available, using %lu MB of it), %s%s\n",
 				d_devNumber, totalMemory()/1024ul/1024ul, availMemory()/1024ul/1024ul, useBytes/1024ul/1024ul,
 				d_doubles ? "using DOUBLES" : "using FLOATS", d_tensors ? ", using Tensor Cores" : "");
 		size_t d_resultSize = sizeof(T)*SIZE*SIZE;
 		d_iters = (useBytes - 2*d_resultSize)/d_resultSize; // We remove A and B sizes
-		//printf("Results are %d bytes each, thus performing %d iterations\n", d_resultSize, d_iters);
+		printf("Results are %zu bytes each, thus performing %zu iterations\n", d_resultSize, d_iters);
+        if((size_t)useBytes < 3*d_resultSize)
+            throw std::string("Low mem for result. aborting.\n");
 		checkError(cuMemAlloc(&d_Cdata, d_iters*d_resultSize), "C alloc");
 		checkError(cuMemAlloc(&d_Adata, d_resultSize), "A alloc");
 		checkError(cuMemAlloc(&d_Bdata, d_resultSize), "B alloc");
@@ -317,11 +324,11 @@ int initCuda() {
 	return deviceCount;
 }
 
-template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors) {
+template<class T> void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors, ssize_t useBytes) {
 	GPU_Test<T> *our;
 	try {
 		our = new GPU_Test<T>(index, doubles, tensors);
-		our->initBuffers(A, B);
+		our->initBuffers(A, B, useBytes);
 	} catch (std::string e) {
 		fprintf(stderr, "Couldn't init a GPU test: %s\n", e.c_str());
 		exit(124);
@@ -460,7 +467,12 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 			if (FD_ISSET(clientFd.at(i), &waitHandles)) {
 				// First, reading processed
 				int processed, errors;
-				read(clientFd.at(i), &processed, sizeof(int));
+				int res = read(clientFd.at(i), &processed, sizeof(int));
+                if(res < sizeof(int))
+                {
+                    fprintf(stderr,"read[%zu] error %d", i, res);
+                    processed = -1;
+                }
 				// Then errors
 				read(clientFd.at(i), &errors, sizeof(int));
 
@@ -567,7 +579,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 		printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
 }
 
-template<class T> void launch(int runLength, bool useDoubles, bool useTensorCores) {
+template<class T> void launch(int runLength, bool useDoubles, bool useTensorCores, ssize_t useBytes) {
 	system("nvidia-smi -L");
 
 	// Initting A and B with random data
@@ -596,7 +608,7 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 		int devCount = initCuda();
 		write(writeFd, &devCount, sizeof(int));
 
-		startBurn<T>(0, writeFd, A, B, useDoubles, useTensorCores);
+		startBurn<T>(0, writeFd, A, B, useDoubles, useTensorCores, useBytes);
 
 		close(writeFd);
 		return;
@@ -623,7 +635,7 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 					// Child
 					close(slavePipe[0]);
 					initCuda();
-					startBurn<T>(i, slavePipe[1], A, B, useDoubles, useTensorCores);
+					startBurn<T>(i, slavePipe[1], A, B, useDoubles, useTensorCores, useBytes);
 
 					close(slavePipe[1]);
 					return;
@@ -647,6 +659,8 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 void showHelp() {
 	printf("GPU Burn\n");
 	printf("Usage: gpu_burn [OPTIONS] [TIME]\n\n");
+    printf("-m <MBytes>\tUse such mem. >48/96M.\n");
+    printf("-m <N>%%\tUse such %% of free mem. Default is%d%%\n", (int)(USEMEM*100));
 	printf("-d\tUse doubles\n");
 	printf("-tc\tUse Tensor cores\n");
 	printf("-h\tShow this help message\n\n");
@@ -654,11 +668,25 @@ void showHelp() {
 	printf("gpu-burn -d 3600\n");
 }
 
+// NNN MB
+// NN% <0
+// 0 --- error
+ssize_t decodeUSEMEM(const char* s){
+    char* s2;
+    int64_t r = strtoll(s,&s2,10);
+    if(s==s2)
+        return 0;
+    if(*s2 == '%')
+        return (s2[1] == 0) ? -r : 0;
+    return (*s2 == 0) ? r*1024*1024 : 0;
+}
+
 int main(int argc, char **argv) {
 	int runLength = 10;
 	bool useDoubles = false;
 	bool useTensorCores = false;
 	int thisParam = 0;
+    ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
 
 	std::vector<std::string> args(argv, argv + argc);
 	for (size_t i = 1; i < args.size(); ++i)
@@ -678,6 +706,29 @@ int main(int argc, char **argv) {
 			useTensorCores = true;
 			thisParam++;
 		}
+		if (argc >= 2 && strncmp(argv[i],"-m",2)==0)
+		{
+            thisParam++;
+
+            // -mNNN[%]
+            // -m NNN[%]
+            if(argv[i][2]){
+                useBytes = decodeUSEMEM(argv[i]+2);
+
+            } else if(i+1 < args.size()){
+                i++;
+			    thisParam++;
+                useBytes = decodeUSEMEM(argv[i]);
+            }else{
+                fprintf(stderr,"invalid format of memusage param (-m)\n");
+                exit(1);
+            }
+            if(useBytes == 0)
+            {
+                fprintf(stderr,"Can't decode memusage param (-m)\n");
+                exit(1);
+            }
+		}
 	}
 	
 	if (argc-thisParam < 2)
@@ -686,9 +737,9 @@ int main(int argc, char **argv) {
 		runLength = atoi(argv[1+thisParam]);
 
 	if (useDoubles)
-		launch<double>(runLength, useDoubles, useTensorCores);
+		launch<double>(runLength, useDoubles, useTensorCores, useBytes);
 	else
-		launch<float>(runLength, useDoubles, useTensorCores);
+		launch<float>(runLength, useDoubles, useTensorCores, useBytes);
 
 	return 0;
 }
