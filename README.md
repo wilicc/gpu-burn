@@ -50,6 +50,8 @@ CCPATH can be specified to point to a specific gcc (default is
     -d	Use doubles
     -tc	Use Tensor cores
     -h	Show this help message
+    -m <MBytes> Use such GPU mem. >48/96M is recomended.
+    -m <N>%     Use such % of free mem. Default is USEMEM(90)%
     
     Example:
-    gpu-burn -d 3600
+    gpu_burn -m 96 -d 3600
