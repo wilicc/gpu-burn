@@ -732,9 +732,10 @@ int main(int argc, char **argv) {
 	}
 	
 	if (argc-thisParam < 2)
-		printf("Run length not specified in the command line.  Burning for 10 secs\n");
+		printf("Run length not specified in the command line. ");
 	else 
 		runLength = atoi(argv[1+thisParam]);
+	printf("Burning for %d seconds.\n", runLength);
 
 	if (useDoubles)
 		launch<double>(runLength, useDoubles, useTensorCores, useBytes);
