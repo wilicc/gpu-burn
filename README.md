@@ -61,4 +61,4 @@ CCPATH can be specified to point to a specific gcc (default is
     -h	Show this help message
     
     Example:
-    gpu-burn -d 3600
+    gpu_burn -d 3600
