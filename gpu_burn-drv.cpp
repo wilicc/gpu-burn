@@ -742,10 +742,10 @@ int main(int argc, char **argv) {
 			{
 				CUdevice device_l;
 				char device_name[255];
-				checkError(cuDeviceGet(&device_l, i_dev ) );
-				checkError(cuDeviceGetName(device_name, 255, device_l) ); 
+				checkError(cuDeviceGet(&device_l, i_dev));
+				checkError(cuDeviceGetName(device_name, 255, device_l)); 
 				size_t device_mem_l;
-				checkError(cuDeviceTotalMem ( &device_mem_l, device_l ) );
+				checkError(cuDeviceTotalMem(&device_mem_l, device_l));
 				printf("ID:%i, %s, mem:%dMB \n", i_dev, device_name, device_mem_l/1000/1000 );
 			}
 			thisParam++;
