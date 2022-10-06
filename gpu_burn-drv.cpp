@@ -6,10 +6,10 @@
  * modification, are permitted provided that the following conditions are met:
  * 
  * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
+ *	list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright notice,
- *    this list of conditions and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution.
+ *	this list of conditions and the following disclaimer in the documentation
+ *	and/or other materials provided with the distribution.
  * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -50,17 +50,6 @@
 
 #include <cuda.h>
 #include "cublas_v2.h"
-
-// #define __STR_HELPER(x) #x
-// #define __STR(x) __STR_HELPER(x)
-
-// #define CUDA_SAFE_CALL(X)                                                                                                                                                                       \
-//     do {                                                                                                                                                                                        \
-//         cudaError_t cuda_res = (X);                                                                                                                                                             \
-//         if (cuda_res != cudaSuccess) throw std::runtime_error(std::string("CUDA_SAFE_CALL " __FILE__ " " __STR(__LINE__) " : " #X " failed: ") + std::string(cudaGetErrorString(cuda_res)));    \
-//     } while (0)
-
-
 
 
 void checkError(int rCode, std::string desc = "") {
@@ -214,9 +203,9 @@ template <class T> class GPU_Test {
 		bind();
 
 		if(useBytes == 0)
-            useBytes = (ssize_t)((double)availMemory()*USEMEM);
+			useBytes = (ssize_t)((double)availMemory()*USEMEM);
 		if(useBytes < 0)
-           useBytes = (ssize_t)((double)availMemory()*(-useBytes/100.0));
+		   useBytes = (ssize_t)((double)availMemory()*(-useBytes/100.0));
 
 		printf("Initialized device %d with %lu MB of memory (%lu MB available, using %lu MB of it), %s%s\n",
 				d_devNumber, totalMemory()/1024ul/1024ul, availMemory()/1024ul/1024ul, useBytes/1024ul/1024ul,
@@ -224,8 +213,8 @@ template <class T> class GPU_Test {
 		size_t d_resultSize = sizeof(T)*SIZE*SIZE;
 		d_iters = (useBytes - 2*d_resultSize)/d_resultSize; // We remove A and B sizes
 		printf("Results are %zu bytes each, thus performing %zu iterations\n", d_resultSize, d_iters);
-        if((size_t)useBytes < 3*d_resultSize)
-            throw std::string("Low mem for result. aborting.\n");
+		if((size_t)useBytes < 3*d_resultSize)
+			throw std::string("Low mem for result. aborting.\n");
 		checkError(cuMemAlloc(&d_Cdata, d_iters*d_resultSize), "C alloc");
 		checkError(cuMemAlloc(&d_Adata, d_resultSize), "A alloc");
 		checkError(cuMemAlloc(&d_Bdata, d_resultSize), "B alloc");
@@ -421,11 +410,11 @@ void updateTemps(int handle, std::vector<int> *temps) {
 
 	int tempValue;
 	// FIXME: The syntax of this print might change in the future..
-	if (sscanf(data, "        GPU Current Temp            : %d C", &tempValue) == 1) {
+	if (sscanf(data, "		GPU Current Temp			: %d C", &tempValue) == 1) {
 		//printf("read temp val %d\n", tempValue);
 		temps->at(gpuIter) = tempValue;
 		gpuIter = (gpuIter+1)%(temps->size());
-	} else if (!strcmp(data, "        Gpu                     : N/A"))
+	} else if (!strcmp(data, "		Gpu					 : N/A"))
 		gpuIter = (gpuIter+1)%(temps->size()); // We rotate the iterator for N/A values as well
 }
 
@@ -480,11 +469,11 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 				// First, reading processed
 				int processed, errors;
 				int res = read(clientFd.at(i), &processed, sizeof(int));
-                if(res < sizeof(int))
-                {
-                    fprintf(stderr,"read[%zu] error %d", i, res);
-                    processed = -1;
-                }
+				if(res < sizeof(int))
+				{
+					fprintf(stderr,"read[%zu] error %d", i, res);
+					processed = -1;
+				}
 				// Then errors
 				read(clientFd.at(i), &errors, sizeof(int));
 
@@ -592,7 +581,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 }
 
 template<class T> void launch(int runLength, bool useDoubles, bool useTensorCores, ssize_t useBytes, int device_id) {
-	// system("nvidia-smi -L");
+	system("nvidia-smi -L");
 
 	// Initting A and B with random data
 	T *A = (T*) malloc(sizeof(T)*SIZE*SIZE);
@@ -612,11 +601,10 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 	std::vector<pid_t> clientPids;
 	clientPipes.push_back(readMain);
 
-	if(device_id > -1)
-	{
+	if (device_id > -1)	{
 		pid_t myPid = fork();
-		if(!myPid)
-		{
+		if(!myPid) {
+			// Child
 			close(mainPipe[0]);
 			int writeFd = mainPipe[1];
 			initCuda();
@@ -628,11 +616,10 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 		}
 		else {
 			clientPids.push_back(myPid);
-
 			close(mainPipe[1]);
 			int devCount;
-		    read(readMain, &devCount, sizeof(int));
-		    listenClients(clientPipes, clientPids, runLength);
+			read(readMain, &devCount, sizeof(int));
+			listenClients(clientPipes, clientPids, runLength);
 		}
 		for (size_t i = 0; i < clientPipes.size(); ++i)
 			close(clientPipes.at(i));		
@@ -656,7 +643,7 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 
 			close(mainPipe[1]);
 			int devCount;
-		    read(readMain, &devCount, sizeof(int));
+			read(readMain, &devCount, sizeof(int));
 
 			if (!devCount) {
 				fprintf(stderr, "No CUDA devices\n");
@@ -699,11 +686,11 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 void showHelp() {
 	printf("GPU Burn\n");
 	printf("Usage: gpu_burn [OPTIONS] [TIME]\n\n");
-    printf("-m <MBytes>\tUse such mem. >48/96M.\n");
-    printf("-m <N>%%\tUse such %% of free mem. Default is%d%%\n", (int)(USEMEM*100));
+	printf("-m <MBytes>\tUse such mem. >48/96M.\n");
+	printf("-m <N>%%\tUse such %% of free mem. Default is%d%%\n", (int)(USEMEM*100));
 	printf("-d\tUse doubles\n");
 	printf("-tc\tUse Tensor cores\n");
-	printf("-i <device_id>\tExecutes only on a given device by it's Id\n");
+	printf("-i <device_id>\tExecutes only on a given device by its Id\n");
 	printf("-l\tLists all GPUs in the system with correct GPU IDs and quits\n");
 	printf("-h\tShow this help message\n\n");
 	printf("Examples:\n");
@@ -717,13 +704,13 @@ void showHelp() {
 // NN% <0
 // 0 --- error
 ssize_t decodeUSEMEM(const char* s){
-    char* s2;
-    int64_t r = strtoll(s,&s2,10);
-    if(s==s2)
-        return 0;
-    if(*s2 == '%')
-        return (s2[1] == 0) ? -r : 0;
-    return (*s2 == 0) ? r*1024*1024 : 0;
+	char* s2;
+	int64_t r = strtoll(s,&s2,10);
+	if(s==s2)
+		return 0;
+	if(*s2 == '%')
+		return (s2[1] == 0) ? -r : 0;
+	return (*s2 == 0) ? r*1024*1024 : 0;
 }
 
 int main(int argc, char **argv) {
@@ -731,8 +718,8 @@ int main(int argc, char **argv) {
 	bool useDoubles = false;
 	bool useTensorCores = false;
 	int thisParam = 0;
-    ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
-    int device_id = -1;
+	ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
+	int device_id = -1;
 
 	std::vector<std::string> args(argv, argv + argc);
 	for (size_t i = 1; i < args.size(); ++i)
@@ -747,20 +734,20 @@ int main(int argc, char **argv) {
 			int count = 0;
 			checkError(cuInit(0));
 			checkError(cuDeviceGetCount(&count));
-			if(count == 0)
-    		{
-        		throw std::runtime_error("There is no compartable device found!\n");
-    		}
-    		for (int i_dev = 0; i_dev < count; i_dev++) 
-            {
+			if (count == 0)
+			{
+				throw std::runtime_error("There is no compartable device found!\n");
+			}
+			for (int i_dev = 0; i_dev < count; i_dev++) 
+			{
 				CUdevice device_l;
 				char device_name[255];
-				checkError(cuDeviceGet ( &device_l, i_dev ) );
-				checkError(cuDeviceGetName ( device_name, 255, device_l) ); 
+				checkError(cuDeviceGet(&device_l, i_dev ) );
+				checkError(cuDeviceGetName(device_name, 255, device_l) ); 
 				size_t device_mem_l;
 				checkError(cuDeviceTotalMem ( &device_mem_l, device_l ) );
-				printf("ID:%i, %s, mem:%dMB \n", i_dev, device_name, device_mem_l/1000/1000 );//,device_prop.pciBusID,device_prop.pciDeviceID,device_prop.pciDomainID);
-            }
+				printf("ID:%i, %s, mem:%dMB \n", i_dev, device_name, device_mem_l/1000/1000 );
+			}
 			thisParam++;
 			return(0);
 		}
@@ -774,46 +761,46 @@ int main(int argc, char **argv) {
 			useTensorCores = true;
 			thisParam++;
 		}
-		if (argc >= 2 && strncmp(argv[i],"-m",2)==0)
+		if (argc >= 2 && strncmp(argv[i],"-m",2) == 0)
 		{
-            thisParam++;
+			thisParam++;
 
-            // -mNNN[%]
-            // -m NNN[%]
-            if(argv[i][2]){
-                useBytes = decodeUSEMEM(argv[i]+2);
-            } else if(i+1 < args.size()){
-                i++;
-			    thisParam++;
-                useBytes = decodeUSEMEM(argv[i]);
-            }else{
-                fprintf(stderr,"invalid format of memusage param (-m)\n");
-                exit(1);
-            }
-            if(useBytes == 0)
-            {
-                fprintf(stderr,"Can't decode memusage param (-m)\n");
-                exit(1);
-            }
+			// -mNNN[%]
+			// -m NNN[%]
+			if(argv[i][2]){
+				useBytes = decodeUSEMEM(argv[i]+2);
+			}else if(i+1 < args.size()){
+				i++;
+				thisParam++;
+				useBytes = decodeUSEMEM(argv[i]);
+			}else{
+				fprintf(stderr,"invalid format of memusage param (-m)\n");
+				exit(1);
+			}
+			if(useBytes == 0)
+			{
+				fprintf(stderr,"Can't decode memusage param (-m)\n");
+				exit(1);
+			}
 		}
-		if (argc >= 2 && strncmp(argv[i],"-i",2)==0)
+		if (argc >= 2 && strncmp(argv[i],"-i",2) == 0)
 		{
-            thisParam++;
+			thisParam++;
 
-            // -mNNN[%]
-            // -m NNN[%]
-            if(argv[i][2]){
-                device_id = atoi(argv[i]+2);
-                printf("using only device id = %i\n", device_id);
-            } else if(i+1 < args.size()){
-                i++;
-			    thisParam++;
-                device_id = atoi(argv[i]);
-                printf("using only device id = %i\n", device_id);
-            }else{
-                fprintf(stderr,"invalid format of -i\n");
-                exit(1);
-            }
+			// -mNNN[%]
+			// -m NNN[%]
+			if(argv[i][2]){
+				device_id = atoi(argv[i]+2);
+				printf("using only device id = %i\n", device_id);
+			}else if(i+1 < args.size()){
+				i++;
+				thisParam++;
+				device_id = atoi(argv[i]);
+				printf("using only device id = %i\n", device_id);
+			}else{
+				fprintf(stderr,"invalid format of -i\n");
+				exit(1);
+			}
 		}		
 	}
 	
