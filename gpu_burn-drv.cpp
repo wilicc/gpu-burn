@@ -51,6 +51,18 @@
 #include <cuda.h>
 #include "cublas_v2.h"
 
+// #define __STR_HELPER(x) #x
+// #define __STR(x) __STR_HELPER(x)
+
+// #define CUDA_SAFE_CALL(X)                                                                                                                                                                       \
+//     do {                                                                                                                                                                                        \
+//         cudaError_t cuda_res = (X);                                                                                                                                                             \
+//         if (cuda_res != cudaSuccess) throw std::runtime_error(std::string("CUDA_SAFE_CALL " __FILE__ " " __STR(__LINE__) " : " #X " failed: ") + std::string(cudaGetErrorString(cuda_res)));    \
+//     } while (0)
+
+
+
+
 void checkError(int rCode, std::string desc = "") {
 	static std::map<int, std::string> g_errorStrings;
 	if (!g_errorStrings.size()) {
@@ -579,8 +591,8 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid, int 
 		printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
 }
 
-template<class T> void launch(int runLength, bool useDoubles, bool useTensorCores, ssize_t useBytes) {
-	system("nvidia-smi -L");
+template<class T> void launch(int runLength, bool useDoubles, bool useTensorCores, ssize_t useBytes, int device_id) {
+	// system("nvidia-smi -L");
 
 	// Initting A and B with random data
 	T *A = (T*) malloc(sizeof(T)*SIZE*SIZE);
@@ -600,57 +612,85 @@ template<class T> void launch(int runLength, bool useDoubles, bool useTensorCore
 	std::vector<pid_t> clientPids;
 	clientPipes.push_back(readMain);
 
-	pid_t myPid = fork();
-	if (!myPid) {
-		// Child
-		close(mainPipe[0]);
-		int writeFd = mainPipe[1];
-		int devCount = initCuda();
-		write(writeFd, &devCount, sizeof(int));
-
-		startBurn<T>(0, writeFd, A, B, useDoubles, useTensorCores, useBytes);
-
-		close(writeFd);
-		return;
-	} else {
-		clientPids.push_back(myPid);
-
-		close(mainPipe[1]);
-		int devCount;
-	    read(readMain, &devCount, sizeof(int));
-
-		if (!devCount) {
-			fprintf(stderr, "No CUDA devices\n");
-			exit(EXIT_FAILURE);
-		} else {
-
-			for (int i = 1; i < devCount; ++i) {
-				int slavePipe[2];
-				pipe(slavePipe);
-				clientPipes.push_back(slavePipe[0]);
-
-				pid_t slavePid = fork();
-
-				if (!slavePid) {
-					// Child
-					close(slavePipe[0]);
-					initCuda();
-					startBurn<T>(i, slavePipe[1], A, B, useDoubles, useTensorCores, useBytes);
-
-					close(slavePipe[1]);
-					return;
-				} else {
-					clientPids.push_back(slavePid);
-					close(slavePipe[1]);
-				}
-			}
-			
-			listenClients(clientPipes, clientPids, runLength);
+	if(device_id > -1)
+	{
+		pid_t myPid = fork();
+		if(!myPid)
+		{
+			close(mainPipe[0]);
+			int writeFd = mainPipe[1];
+			initCuda();
+			int devCount = 1;
+			write(writeFd, &devCount, sizeof(int));
+			startBurn<T>(device_id, writeFd, A, B, useDoubles, useTensorCores, useBytes);		
+			close(writeFd);
+			return;
 		}
+		else {
+			clientPids.push_back(myPid);
+
+			close(mainPipe[1]);
+			int devCount;
+		    read(readMain, &devCount, sizeof(int));
+		    listenClients(clientPipes, clientPids, runLength);
+		}
+		for (size_t i = 0; i < clientPipes.size(); ++i)
+			close(clientPipes.at(i));		
+	}	
+	else
+	{
+		pid_t myPid = fork();
+		if (!myPid) {
+			// Child
+			close(mainPipe[0]);
+			int writeFd = mainPipe[1];
+			int devCount = initCuda();
+			write(writeFd, &devCount, sizeof(int));
+
+			startBurn<T>(0, writeFd, A, B, useDoubles, useTensorCores, useBytes);
+
+			close(writeFd);
+			return;
+		} else {
+			clientPids.push_back(myPid);
+
+			close(mainPipe[1]);
+			int devCount;
+		    read(readMain, &devCount, sizeof(int));
+
+			if (!devCount) {
+				fprintf(stderr, "No CUDA devices\n");
+				exit(EXIT_FAILURE);
+			} else {
+
+				for (int i = 1; i < devCount; ++i) {
+					int slavePipe[2];
+					pipe(slavePipe);
+					clientPipes.push_back(slavePipe[0]);
+
+					pid_t slavePid = fork();
+
+					if (!slavePid) {
+						// Child
+						close(slavePipe[0]);
+						initCuda();
+						startBurn<T>(i, slavePipe[1], A, B, useDoubles, useTensorCores, useBytes);
+
+						close(slavePipe[1]);
+						return;
+					} else {
+						clientPids.push_back(slavePid);
+						close(slavePipe[1]);
+					}
+				}
+				
+				listenClients(clientPipes, clientPids, runLength);
+			}
+		}
+		for (size_t i = 0; i < clientPipes.size(); ++i)
+			close(clientPipes.at(i));
 	}
 
-	for (size_t i = 0; i < clientPipes.size(); ++i)
-		close(clientPipes.at(i));
 
 	free(A);
 	free(B);
@@ -663,9 +703,14 @@ void showHelp() {
     printf("-m <N>%%\tUse such %% of free mem. Default is%d%%\n", (int)(USEMEM*100));
 	printf("-d\tUse doubles\n");
 	printf("-tc\tUse Tensor cores\n");
+	printf("-i <device_id>\tExecutes only on a given device by it's Id\n");
+	printf("-l\tLists all GPUs in the system with correct GPU IDs and quits\n");
 	printf("-h\tShow this help message\n\n");
-	printf("Example:\n");
-	printf("gpu-burn -d 3600\n");
+	printf("Examples:\n");
+	printf("  gpu-burn -d 3600\n");
+	printf("  gpu-burn -d -m 99%% 3600\n");
+	printf("  gpu-burn -i 2 3600\n");
+	printf("  gpu-burn -l\n");
 }
 
 // NNN MB
@@ -687,6 +732,7 @@ int main(int argc, char **argv) {
 	bool useTensorCores = false;
 	int thisParam = 0;
     ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
+    int device_id = -1;
 
 	std::vector<std::string> args(argv, argv + argc);
 	for (size_t i = 1; i < args.size(); ++i)
@@ -695,6 +741,28 @@ int main(int argc, char **argv) {
 		{
 			showHelp();
 			return 0;
+		}		
+		if (argc >= 2 && std::string(argv[i]).find("-l") != std::string::npos)
+		{
+			int count = 0;
+			checkError(cuInit(0));
+			checkError(cuDeviceGetCount(&count));
+			if(count == 0)
+    		{
+        		throw std::runtime_error("There is no compartable device found!\n");
+    		}
+    		for (int i_dev = 0; i_dev < count; i_dev++) 
+            {
+				CUdevice device_l;
+				char device_name[255];
+				checkError(cuDeviceGet ( &device_l, i_dev ) );
+				checkError(cuDeviceGetName ( device_name, 255, device_l) ); 
+				size_t device_mem_l;
+				checkError(cuDeviceTotalMem ( &device_mem_l, device_l ) );
+				printf("ID:%i, %s, mem:%dMB \n", i_dev, device_name, device_mem_l/1000/1000 );//,device_prop.pciBusID,device_prop.pciDeviceID,device_prop.pciDomainID);
+            }
+			thisParam++;
+			return(0);
 		}
 		if (argc >= 2 && std::string(argv[i]).find("-d") != std::string::npos)
 		{
@@ -714,7 +782,6 @@ int main(int argc, char **argv) {
             // -m NNN[%]
             if(argv[i][2]){
                 useBytes = decodeUSEMEM(argv[i]+2);
-
             } else if(i+1 < args.size()){
                 i++;
 			    thisParam++;
@@ -729,6 +796,25 @@ int main(int argc, char **argv) {
                 exit(1);
             }
 		}
+		if (argc >= 2 && strncmp(argv[i],"-i",2)==0)
+		{
+            thisParam++;
+
+            // -mNNN[%]
+            // -m NNN[%]
+            if(argv[i][2]){
+                device_id = atoi(argv[i]+2);
+                printf("using only device id = %i\n", device_id);
+            } else if(i+1 < args.size()){
+                i++;
+			    thisParam++;
+                device_id = atoi(argv[i]);
+                printf("using only device id = %i\n", device_id);
+            }else{
+                fprintf(stderr,"invalid format of -i\n");
+                exit(1);
+            }
+		}		
 	}
 	
 	if (argc-thisParam < 2)
@@ -738,9 +824,9 @@ int main(int argc, char **argv) {
 	printf("Burning for %d seconds.\n", runLength);
 
 	if (useDoubles)
-		launch<double>(runLength, useDoubles, useTensorCores, useBytes);
+		launch<double>(runLength, useDoubles, useTensorCores, useBytes, device_id);
 	else
-		launch<float>(runLength, useDoubles, useTensorCores, useBytes);
+		launch<float>(runLength, useDoubles, useTensorCores, useBytes, device_id);
 
 	return 0;
 }
