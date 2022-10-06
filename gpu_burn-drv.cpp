@@ -786,9 +786,6 @@ int main(int argc, char **argv) {
 		if (argc >= 2 && strncmp(argv[i],"-i",2) == 0)
 		{
 			thisParam++;
-
-			// -mNNN[%]
-			// -m NNN[%]
 			if(argv[i][2]){
 				device_id = atoi(argv[i]+2);
 				printf("using only device id = %i\n", device_id);
