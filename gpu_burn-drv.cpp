@@ -49,6 +49,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <vector>
+#include <stdexcept>
 
 #include "cublas_v2.h"
 #define CUDA_ENABLE_DEPRECATED
