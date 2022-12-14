@@ -41,6 +41,7 @@
 #include <fstream>
 #include <map>
 #include <signal.h>
+#include <stdexcept>
 #include <string.h>
 #include <string>
 #include <sys/time.h>
@@ -49,7 +50,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <vector>
-#include <stdexcept>
 
 #include "cublas_v2.h"
 #define CUDA_ENABLE_DEPRECATED
@@ -616,6 +616,10 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
             fflush(stdout);
 
+            for (size_t i = 0; i < clientErrors.size(); ++i)
+                if (clientErrors.at(i))
+                    clientFaulty.at(i) = true;
+
             if (nextReport < elapsed) {
                 nextReport = elapsed + 10.0f;
                 printf("\n\tSummary at:   ");
@@ -623,11 +627,8 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
                 system("date"); // Printing a date
                 fflush(stdout);
                 printf("\n");
-                for (size_t i = 0; i < clientErrors.size(); ++i) {
-                    if (clientErrors.at(i))
-                        clientFaulty.at(i) = true;
+                for (size_t i = 0; i < clientErrors.size(); ++i)
                     clientErrors.at(i) = 0;
-                }
             }
         }
 
