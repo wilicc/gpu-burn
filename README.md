@@ -56,9 +56,13 @@ CCPATH can be specified to point to a specific gcc (default is
     GPU Burn
     Usage: gpu_burn [OPTIONS] [TIME]
     
-    -d	Use doubles
-    -tc	Use Tensor cores
-    -h	Show this help message
+    -m X   Use X MB of memory
+    -m N%  Use N% of the available GPU memory
+    -d	   Use doubles
+    -tc	   Try to use Tensor cores (if available)
+    -l     List all GPUs in the system
+    -i N   Execute only on GPU N
+    -h	   Show this help message
     
     Example:
     gpu_burn -d 3600
