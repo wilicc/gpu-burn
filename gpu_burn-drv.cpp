@@ -272,7 +272,7 @@ template <class T> class GPU_Test {
 
         // Populating matrices A and B
         checkError(cuMemcpyHtoD(d_Adata, A, d_resultSize), "A -> device");
-        checkError(cuMemcpyHtoD(d_Bdata, B, d_resultSize), "A -> device");
+        checkError(cuMemcpyHtoD(d_Bdata, B, d_resultSize), "B -> device");
 
         initCompareKernel();
     }
