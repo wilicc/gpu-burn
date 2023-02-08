@@ -64,11 +64,11 @@ can be set to change the resulting image tag:
     
     -m X   Use X MB of memory
     -m N%  Use N% of the available GPU memory
-    -d	   Use doubles
-    -tc	   Try to use Tensor cores (if available)
+    -d     Use doubles
+    -tc    Try to use Tensor cores (if available)
     -l     List all GPUs in the system
     -i N   Execute only on GPU N
-    -h	   Show this help message
+    -h     Show this help message
     
     Example:
     gpu_burn -d 3600
