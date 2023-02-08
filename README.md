@@ -51,6 +51,12 @@ CCPATH can be specified to point to a specific gcc (default is
 
 `make CCPATH=/usr/local/bin`
 
+CUDA_VERSION and IMAGE_DISTRO can be used to override the base
+images used when building the Docker `image` target, while IMAGE_NAME
+can be set to change the resulting image tag:
+
+`make IMAGE_NAME=myregistry.private.com/gpu-burn CUDA_VERSION=12.0.1 IMAGE_DISTRO=ubuntu22.04 image`
+
 # Usage
 
     GPU Burn
