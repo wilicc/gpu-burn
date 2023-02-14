@@ -31,6 +31,7 @@
     2048ul // Matrices are SIZE*SIZE..  2048^2 should be efficiently implemented \
         // in CUBLAS
 #define USEMEM 0.9 // Try to allocate 90% of memory
+#define COMPARE_KERNEL "compare.ptx"
 
 // Used to report op/s, measured through Visual Profiler, CUBLAS from CUDA 7.5
 // (Seems that they indeed take the naive dim^3 approach)
@@ -179,8 +180,8 @@ bool g_running = false;
 
 template <class T> class GPU_Test {
   public:
-    GPU_Test(int dev, bool doubles, bool tensors)
-        : d_devNumber(dev), d_doubles(doubles), d_tensors(tensors) {
+    GPU_Test(int dev, bool doubles, bool tensors, const char *kernelFile)
+        : d_devNumber(dev), d_doubles(doubles), d_tensors(tensors), d_kernelFile(kernelFile){
         checkError(cuDeviceGet(&d_dev, d_devNumber));
         checkError(cuCtxCreate(&d_ctx, 0, d_dev));
 
@@ -303,14 +304,12 @@ template <class T> class GPU_Test {
     }
 
     void initCompareKernel() {
-        const char *kernelFile = "compare.ptx";
         {
-            std::ifstream f(kernelFile);
+            std::ifstream f(d_kernelFile);
             checkError(f.good() ? CUDA_SUCCESS : CUDA_ERROR_NOT_FOUND,
-                       std::string("couldn't find file \"") + kernelFile +
-                           "\" from working directory");
+                       std::string("couldn't find compare kernel: ") + d_kernelFile);
         }
-        checkError(cuModuleLoad(&d_module, kernelFile), "load module");
+        checkError(cuModuleLoad(&d_module, d_kernelFile), "load module");
         checkError(cuModuleGetFunction(&d_function, d_module,
                                        d_doubles ? "compareD" : "compare"),
                    "get func");
@@ -350,6 +349,7 @@ template <class T> class GPU_Test {
     bool d_doubles;
     bool d_tensors;
     int d_devNumber;
+    const char *d_kernelFile;
     size_t d_iters;
     size_t d_resultSize;
 
@@ -390,10 +390,10 @@ int initCuda() {
 
 template <class T>
 void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors,
-               ssize_t useBytes) {
+               ssize_t useBytes, const char *kernelFile) {
     GPU_Test<T> *our;
     try {
-        our = new GPU_Test<T>(index, doubles, tensors);
+        our = new GPU_Test<T>(index, doubles, tensors, kernelFile);
         our->initBuffers(A, B, useBytes);
     } catch (std::string e) {
         fprintf(stderr, "Couldn't init a GPU test: %s\n", e.c_str());
@@ -665,7 +665,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
 template <class T>
 void launch(int runLength, bool useDoubles, bool useTensorCores,
-            ssize_t useBytes, int device_id) {
+            ssize_t useBytes, int device_id, const char * kernelFile) {
     system("nvidia-smi -L");
 
     // Initting A and B with random data
@@ -696,7 +696,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             int devCount = 1;
             write(writeFd, &devCount, sizeof(int));
             startBurn<T>(device_id, writeFd, A, B, useDoubles, useTensorCores,
-                         useBytes);
+                         useBytes, kernelFile);
             close(writeFd);
             return;
         } else {
@@ -718,7 +718,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             write(writeFd, &devCount, sizeof(int));
 
             startBurn<T>(0, writeFd, A, B, useDoubles, useTensorCores,
-                         useBytes);
+                         useBytes, kernelFile);
 
             close(writeFd);
             return;
@@ -745,7 +745,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
                         close(slavePipe[0]);
                         initCuda();
                         startBurn<T>(i, slavePipe[1], A, B, useDoubles,
-                                     useTensorCores, useBytes);
+                                     useTensorCores, useBytes, kernelFile);
 
                         close(slavePipe[1]);
                         return;
@@ -776,6 +776,8 @@ void showHelp() {
     printf("-tc\tTry to use Tensor cores\n");
     printf("-l\tLists all GPUs in the system\n");
     printf("-i N\tExecute only on GPU N\n");
+    printf("-c FILE\tUse FILE as compare kernel.  Default is %s\n",
+           COMPARE_KERNEL);
     printf("-h\tShow this help message\n\n");
     printf("Examples:\n");
     printf("  gpu-burn -d 3600 # burns all GPUs with doubles for an hour\n");
@@ -805,6 +807,7 @@ int main(int argc, char **argv) {
     int thisParam = 0;
     ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
     int device_id = -1;
+    char *kernelFile = (char *)COMPARE_KERNEL;
 
     std::vector<std::string> args(argv, argv + argc);
     for (size_t i = 1; i < args.size(); ++i) {
@@ -868,20 +871,29 @@ int main(int argc, char **argv) {
                 exit(1);
             }
         }
+        if (argc >= 2 && strncmp(argv[i], "-c", 2) == 0) {
+            thisParam++;
+
+            if (argv[i + 1]) {
+                kernelFile = argv[i + 1];
+                thisParam++;
+            }
+        }
     }
 
     if (argc - thisParam < 2)
         printf("Run length not specified in the command line. ");
     else
         runLength = atoi(argv[1 + thisParam]);
+    printf("Using compare file: %s\n", kernelFile);
     printf("Burning for %d seconds.\n", runLength);
 
     if (useDoubles)
         launch<double>(runLength, useDoubles, useTensorCores, useBytes,
-                       device_id);
+                       device_id, kernelFile);
     else
         launch<float>(runLength, useDoubles, useTensorCores, useBytes,
-                      device_id);
+                      device_id, kernelFile);
 
     return 0;
 }
