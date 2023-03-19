@@ -865,8 +865,13 @@ int main(int argc, char **argv) {
         if (argc >= 2 && strncmp(argv[i], "-i", 2) == 0) {
             thisParam++;
 
-            device_id = strtol(argv[i] + 2, NULL, 0);
-            if (device_id <= 0 && argv[i][2] != '0') {
+            if (argv[i][2]) {
+                device_id = strtol(argv[i] + 2, NULL, 0);
+            } else if (i + 1 < args.size()) {
+                i++;
+                thisParam++;
+                device_id = strtol(argv[i], NULL, 0);
+            } else {
                 fprintf(stderr, "Syntax error near -i\n");
                 exit(1);
             }
