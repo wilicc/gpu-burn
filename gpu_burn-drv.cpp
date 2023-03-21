@@ -649,9 +649,9 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
     printf("\nKilling processes.. ");
     fflush(stdout);
     for (size_t i = 0; i < clientPid.size(); ++i)
-        kill(clientPid.at(i), 15);
+        kill(clientPid.at(i), SIGTERM);
 
-    kill(tempPid, 15);
+    kill(tempPid, SIGTERM);
     close(tempHandle);
 
     while (wait(NULL) != -1)
