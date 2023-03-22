@@ -39,6 +39,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <errno.h>
 #include <fstream>
 #include <map>
 #include <signal.h>
@@ -397,7 +398,7 @@ void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors,
         our->initBuffers(A, B, useBytes);
     } catch (std::string e) {
         fprintf(stderr, "Couldn't init a GPU test: %s\n", e.c_str());
-        exit(124);
+        exit(EMEDIUMTYPE);
     }
 
     // The actual work
@@ -438,7 +439,7 @@ void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors,
         // Signalling that we failed
         write(writeFd, &ops, sizeof(int));
         write(writeFd, &ops, sizeof(int));
-        exit(111);
+        exit(ECONNREFUSED);
     }
 }
 
@@ -455,7 +456,7 @@ int pollTemp(pid_t *p) {
                NULL);
         fprintf(stderr, "Could not invoke nvidia-smi, no temps available\n");
 
-        exit(0);
+        exit(ENODEV);
     }
 
     *p = myPid;
@@ -639,7 +640,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
                 oneAlive = true;
         if (!oneAlive) {
             fprintf(stderr, "\n\nNo clients are alive!  Aborting\n");
-            exit(123);
+            exit(ENOMEDIUM);
         }
 
         if (startTime + runTime < thisTime)
@@ -649,9 +650,9 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
     printf("\nKilling processes.. ");
     fflush(stdout);
     for (size_t i = 0; i < clientPid.size(); ++i)
-        kill(clientPid.at(i), 15);
+        kill(clientPid.at(i), SIGTERM);
 
-    kill(tempPid, 15);
+    kill(tempPid, SIGTERM);
     close(tempHandle);
 
     while (wait(NULL) != -1)
@@ -855,11 +856,11 @@ int main(int argc, char **argv) {
                 useBytes = decodeUSEMEM(argv[i]);
             } else {
                 fprintf(stderr, "Syntax error near -m\n");
-                exit(1);
+                exit(EXIT_FAILURE);
             }
             if (useBytes == 0) {
                 fprintf(stderr, "Syntax error near -m\n");
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
         if (argc >= 2 && strncmp(argv[i], "-i", 2) == 0) {
@@ -873,7 +874,7 @@ int main(int argc, char **argv) {
                 device_id = strtol(argv[i], NULL, 0);
             } else {
                 fprintf(stderr, "Syntax error near -i\n");
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
         if (argc >= 2 && strncmp(argv[i], "-c", 2) == 0) {
