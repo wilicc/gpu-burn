@@ -27,15 +27,15 @@
  *policies, either expressed or implied, of the FreeBSD Project.
  */
 
-#define SIZE                                                                   \
-    2048ul // Matrices are SIZE*SIZE..  2048^2 should be efficiently implemented \
-        // in CUBLAS
+// Matrices are SIZE*SIZE..  POT should be efficiently implemented in CUBLAS
+#define SIZE 8192ul 
 #define USEMEM 0.9 // Try to allocate 90% of memory
 #define COMPARE_KERNEL "compare.ptx"
 
 // Used to report op/s, measured through Visual Profiler, CUBLAS from CUDA 7.5
 // (Seems that they indeed take the naive dim^3 approach)
-#define OPS_PER_MUL 17188257792ul
+//#define OPS_PER_MUL 17188257792ul // Measured for SIZE = 2048
+#define OPS_PER_MUL 1100048498688ul // Extrapolated for SIZE = 8192
 
 #include <cstdio>
 #include <cstring>
