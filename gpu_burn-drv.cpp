@@ -732,7 +732,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
 
             if (!devCount) {
                 fprintf(stderr, "No CUDA devices\n");
-                exit(EXIT_FAILURE);
+                exit(ENODEV);
             } else {
                 for (int i = 1; i < devCount; ++i) {
                     int slavePipe[2];
@@ -856,11 +856,11 @@ int main(int argc, char **argv) {
                 useBytes = decodeUSEMEM(argv[i]);
             } else {
                 fprintf(stderr, "Syntax error near -m\n");
-                exit(EXIT_FAILURE);
+                exit(EINVAL);
             }
             if (useBytes == 0) {
                 fprintf(stderr, "Syntax error near -m\n");
-                exit(EXIT_FAILURE);
+                exit(EINVAL);
             }
         }
         if (argc >= 2 && strncmp(argv[i], "-i", 2) == 0) {
@@ -874,7 +874,7 @@ int main(int argc, char **argv) {
                 device_id = strtol(argv[i], NULL, 0);
             } else {
                 fprintf(stderr, "Syntax error near -i\n");
-                exit(EXIT_FAILURE);
+                exit(EINVAL);
             }
         }
         if (argc >= 2 && strncmp(argv[i], "-c", 2) == 0) {
