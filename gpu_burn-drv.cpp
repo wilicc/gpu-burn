@@ -51,6 +51,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <thread>
 #include <time.h>
 #include <unistd.h>
 #include <vector>
@@ -657,44 +658,32 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
         kill(clientPid.at(i), SIGTERM);
 
     kill(tempPid, SIGTERM);
-    close(tempHandle);
 
-    // check each process, see if they are all alive until time threshold, then force kill if still alive
-    auto start = std::chrono::steady_clock::now();
-    auto stop = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::seconds>(stop - start);
+    // processes should be terminated by SIGTERM within threshold time (so wait and then check pids)
+    std::this_thread::sleep_for(sigterm_timeout_threshold_secs);
+
+    // check each process and see if they are alive
     std::vector<int> killed_processes; // track the number of killed processes
-    while (duration <= sigterm_timeout_threshold_secs) {
-        for (size_t i = 0; i < clientPid.size(); ++i) {
-            int status;
-            pid_t return_pid = waitpid(clientPid.at(i), &status, WNOHANG);
-            if (return_pid == clientPid.at(i)) {
-                /* child is finished. exit status in status */
-                killed_processes.push_back(return_pid);
-            }
-        }
+    // loop through pids for each client / GPU
+    for (size_t i = 0; i < clientPid.size(); ++i) {
         int status;
-        pid_t return_pid = waitpid(tempPid, &status, WNOHANG);
-        if (return_pid == tempPid) {
-                /* child is finished. exit status in status */
-                killed_processes.push_back(return_pid);
-            }
-
-        // number of killed process should be number GPUs + 1 (need to add tempPid process) to exit while loop early
-        if (killed_processes.size() == clientPid.size() + 1) {
-            break;
+        pid_t return_pid = waitpid(clientPid.at(i), &status, WNOHANG);
+        if (return_pid == clientPid.at(i)) {
+            /* child is finished. exit status in status */
+            killed_processes.push_back(return_pid);
         }
-        sleep(1); // check if processes are alive every 1 second
-
-        // update the duration
-        stop = std::chrono::steady_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::seconds>(stop - start);
+    }
+    // handle the tempPid
+    int status;
+    pid_t return_pid = waitpid(tempPid, &status, WNOHANG);
+    if (return_pid == tempPid) {
+        /* child is finished. exit status in status */
+        killed_processes.push_back(return_pid);
     }
 
-    // if duration exceeds time, do a sigkill
-    if (duration > sigterm_timeout_threshold_secs) {
-        printf("\nKilling processes with SIGKILL (force kill) ... \n");
-        fflush(stdout);
+    // number of killed process should be number GPUs + 1 (need to add tempPid process) to exit while loop early
+    if (killed_processes.size() != clientPid.size() + 1) {
+        printf("\nKilling processes with SIGKILL (force kill)\n");
 
         for (size_t i = 0; i < clientPid.size(); ++i) {
             // check if pid was already killed with SIGTERM before using SIGKILL
@@ -706,6 +695,8 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
         if (std::find(killed_processes.begin(), killed_processes.end(), tempPid) == killed_processes.end())
             kill(tempPid, SIGKILL);
     }
+
+    close(tempHandle);
 
     while (wait(NULL) != -1)
         ;
