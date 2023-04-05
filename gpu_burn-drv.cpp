@@ -28,7 +28,7 @@
  */
 
 // Matrices are SIZE*SIZE..  POT should be efficiently implemented in CUBLAS
-#define SIZE 8192ul 
+#define SIZE 8192ul
 #define USEMEM 0.9 // Try to allocate 90% of memory
 #define COMPARE_KERNEL "compare.ptx"
 
@@ -37,6 +37,8 @@
 //#define OPS_PER_MUL 17188257792ul // Measured for SIZE = 2048
 #define OPS_PER_MUL 1100048498688ul // Extrapolated for SIZE = 8192
 
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <errno.h>
@@ -52,6 +54,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <vector>
+
+#define SIGTERM_TIMEOUT_THRESHOLD_SECS 30 // number of seconds for sigterm to kill child processes before forcing a sigkill
 
 #include "cublas_v2.h"
 #define CUDA_ENABLE_DEPRECATED
@@ -492,7 +496,7 @@ void updateTemps(int handle, std::vector<int> *temps) {
 }
 
 void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
-                   int runTime) {
+                   int runTime, std::chrono::seconds sigterm_timeout_threshold_secs) {
     fd_set waitHandles;
 
     pid_t tempPid;
@@ -647,13 +651,61 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
             break;
     }
 
-    printf("\nKilling processes.. ");
+    printf("\nKilling processes with SIGTERM (soft kill)\n");
     fflush(stdout);
     for (size_t i = 0; i < clientPid.size(); ++i)
         kill(clientPid.at(i), SIGTERM);
 
     kill(tempPid, SIGTERM);
     close(tempHandle);
+
+    // check each process, see if they are all alive until time threshold, then force kill if still alive
+    auto start = std::chrono::steady_clock::now();
+    auto stop = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(stop - start);
+    std::vector<int> killed_processes; // track the number of killed processes
+    while (duration <= sigterm_timeout_threshold_secs) {
+        for (size_t i = 0; i < clientPid.size(); ++i) {
+            int status;
+            pid_t return_pid = waitpid(clientPid.at(i), &status, WNOHANG);
+            if (return_pid == clientPid.at(i)) {
+                /* child is finished. exit status in status */
+                killed_processes.push_back(return_pid);
+            }
+        }
+        int status;
+        pid_t return_pid = waitpid(tempPid, &status, WNOHANG);
+        if (return_pid == tempPid) {
+                /* child is finished. exit status in status */
+                killed_processes.push_back(return_pid);
+            }
+
+        // number of killed process should be number GPUs + 1 (need to add tempPid process) to exit while loop early
+        if (killed_processes.size() == clientPid.size() + 1) {
+            break;
+        }
+        sleep(1); // check if processes are alive every 1 second
+
+        // update the duration
+        stop = std::chrono::steady_clock::now();
+        duration = std::chrono::duration_cast<std::chrono::seconds>(stop - start);
+    }
+
+    // if duration exceeds time, do a sigkill
+    if (duration > sigterm_timeout_threshold_secs) {
+        printf("\nKilling processes with SIGKILL (force kill) ... \n");
+        fflush(stdout);
+
+        for (size_t i = 0; i < clientPid.size(); ++i) {
+            // check if pid was already killed with SIGTERM before using SIGKILL
+            if (std::find(killed_processes.begin(), killed_processes.end(), clientPid.at(i)) == killed_processes.end())
+                kill(clientPid.at(i), SIGKILL);
+        }
+
+        // check if pid was already killed with SIGTERM before using SIGKILL
+        if (std::find(killed_processes.begin(), killed_processes.end(), tempPid) == killed_processes.end())
+            kill(tempPid, SIGKILL);
+    }
 
     while (wait(NULL) != -1)
         ;
@@ -666,7 +718,8 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
 template <class T>
 void launch(int runLength, bool useDoubles, bool useTensorCores,
-            ssize_t useBytes, int device_id, const char * kernelFile) {
+            ssize_t useBytes, int device_id, const char * kernelFile,
+            std::chrono::seconds sigterm_timeout_threshold_secs) {
     system("nvidia-smi -L");
 
     // Initting A and B with random data
@@ -705,7 +758,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             close(mainPipe[1]);
             int devCount;
             read(readMain, &devCount, sizeof(int));
-            listenClients(clientPipes, clientPids, runLength);
+            listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
             close(clientPipes.at(i));
@@ -756,7 +809,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
                     }
                 }
 
-                listenClients(clientPipes, clientPids, runLength);
+                listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
             }
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
@@ -779,6 +832,8 @@ void showHelp() {
     printf("-i N\tExecute only on GPU N\n");
     printf("-c FILE\tUse FILE as compare kernel.  Default is %s\n",
            COMPARE_KERNEL);
+    printf("-stts T\tSet timeout threshold to T seconds for using SIGTERM to abort child processes before using SIGKILL.  Default is %d\n",
+           SIGTERM_TIMEOUT_THRESHOLD_SECS);
     printf("-h\tShow this help message\n\n");
     printf("Examples:\n");
     printf("  gpu-burn -d 3600 # burns all GPUs with doubles for an hour\n");
@@ -809,6 +864,7 @@ int main(int argc, char **argv) {
     ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
     int device_id = -1;
     char *kernelFile = (char *)COMPARE_KERNEL;
+    std::chrono::seconds sigterm_timeout_threshold_secs = std::chrono::seconds(SIGTERM_TIMEOUT_THRESHOLD_SECS);
 
     std::vector<std::string> args(argv, argv + argc);
     for (size_t i = 1; i < args.size(); ++i) {
@@ -885,6 +941,14 @@ int main(int argc, char **argv) {
                 thisParam++;
             }
         }
+        if (argc >= 2 && strncmp(argv[i], "-stts", 2) == 0) {
+            thisParam++;
+
+            if (argv[i + 1]) {
+                sigterm_timeout_threshold_secs = std::chrono::seconds(atoi(argv[i + 1]));
+                thisParam++;
+            }
+        }
     }
 
     if (argc - thisParam < 2)
@@ -896,10 +960,10 @@ int main(int argc, char **argv) {
 
     if (useDoubles)
         launch<double>(runLength, useDoubles, useTensorCores, useBytes,
-                       device_id, kernelFile);
+                       device_id, kernelFile, sigterm_timeout_threshold_secs);
     else
         launch<float>(runLength, useDoubles, useTensorCores, useBytes,
-                      device_id, kernelFile);
+                      device_id, kernelFile, sigterm_timeout_threshold_secs);
 
     return 0;
 }
