@@ -75,10 +75,9 @@ void _checkError(int rCode, std::string file, int line, std::string desc = "") {
         // Yes, this *is* a memory leak, but this block is only executed on
         // error, so it's not a big deal
     }
-    }
+}
 
-void _checkError(cublasStatus_t rCode, std::string file, int line,
-                 std::string desc = "") {
+void _checkError(cublasStatus_t rCode, std::string file, int line, std::string desc = "") {
     if (rCode != CUBLAS_STATUS_SUCCESS) {
         const char *err = cublasGetStatusString(rCode);
         throw std::runtime_error(
@@ -87,8 +86,8 @@ void _checkError(cublasStatus_t rCode, std::string file, int line,
             file + ":" + std::to_string(line) + "): " + err);
         // Yes, this *is* a memory leak, but this block is only executed on
         // error, so it's not a big deal
-}
     }
+}
 
 #define checkError(rCode, ...)                                                 \
     _checkError(rCode, __FILE__, __LINE__, ##__VA_ARGS__)
