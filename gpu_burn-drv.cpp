@@ -42,6 +42,7 @@
 #include <cstdio>
 #include <cstring>
 #include <errno.h>
+#include <exception>
 #include <fstream>
 #include <map>
 #include <signal.h>
@@ -62,119 +63,35 @@
 #define CUDA_ENABLE_DEPRECATED
 #include <cuda.h>
 
-void checkError(int rCode, std::string desc = "") {
-    static std::map<int, std::string> g_errorStrings;
-    if (!g_errorStrings.size()) {
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_INVALID_VALUE, "CUDA_ERROR_INVALID_VALUE"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_OUT_OF_MEMORY, "CUDA_ERROR_OUT_OF_MEMORY"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_NOT_INITIALIZED, "CUDA_ERROR_NOT_INITIALIZED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_DEINITIALIZED, "CUDA_ERROR_DEINITIALIZED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_NO_DEVICE, "CUDA_ERROR_NO_DEVICE"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_INVALID_DEVICE, "CUDA_ERROR_INVALID_DEVICE"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_INVALID_IMAGE, "CUDA_ERROR_INVALID_IMAGE"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_INVALID_CONTEXT, "CUDA_ERROR_INVALID_CONTEXT"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_MAP_FAILED, "CUDA_ERROR_MAP_FAILED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_UNMAP_FAILED, "CUDA_ERROR_UNMAP_FAILED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_ARRAY_IS_MAPPED, "CUDA_ERROR_ARRAY_IS_MAPPED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_ALREADY_MAPPED, "CUDA_ERROR_ALREADY_MAPPED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_NO_BINARY_FOR_GPU, "CUDA_ERROR_NO_BINARY_FOR_GPU"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_ALREADY_ACQUIRED, "CUDA_ERROR_ALREADY_ACQUIRED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_NOT_MAPPED, "CUDA_ERROR_NOT_MAPPED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_NOT_MAPPED_AS_ARRAY, "CUDA_ERROR_NOT_MAPPED_AS_ARRAY"));
-        g_errorStrings.insert(
-            std::pair<int, std::string>(CUDA_ERROR_NOT_MAPPED_AS_POINTER,
-                                        "CUDA_ERROR_NOT_MAPPED_AS_POINTER"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_UNSUPPORTED_LIMIT, "CUDA_ERROR_UNSUPPORTED_LIMIT"));
-        g_errorStrings.insert(
-            std::pair<int, std::string>(CUDA_ERROR_CONTEXT_ALREADY_IN_USE,
-                                        "CUDA_ERROR_CONTEXT_ALREADY_IN_USE"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_INVALID_SOURCE, "CUDA_ERROR_INVALID_SOURCE"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_FILE_NOT_FOUND, "CUDA_ERROR_FILE_NOT_FOUND"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_SHARED_OBJECT_SYMBOL_NOT_FOUND,
-            "CUDA_ERROR_SHARED_OBJECT_SYMBOL_NOT_FOUND"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_SHARED_OBJECT_INIT_FAILED,
-            "CUDA_ERROR_SHARED_OBJECT_INIT_FAILED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_OPERATING_SYSTEM, "CUDA_ERROR_OPERATING_SYSTEM"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_INVALID_HANDLE, "CUDA_ERROR_INVALID_HANDLE"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_NOT_FOUND, "CUDA_ERROR_NOT_FOUND"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_NOT_READY, "CUDA_ERROR_NOT_READY"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_LAUNCH_FAILED, "CUDA_ERROR_LAUNCH_FAILED"));
-        g_errorStrings.insert(
-            std::pair<int, std::string>(CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES,
-                                        "CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_LAUNCH_TIMEOUT, "CUDA_ERROR_LAUNCH_TIMEOUT"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_LAUNCH_INCOMPATIBLE_TEXTURING,
-            "CUDA_ERROR_LAUNCH_INCOMPATIBLE_TEXTURING"));
-        g_errorStrings.insert(
-            std::pair<int, std::string>(CUDA_ERROR_PRIMARY_CONTEXT_ACTIVE,
-                                        "CUDA_ERROR_PRIMARY_CONTEXT_ACTIVE"));
-        g_errorStrings.insert(
-            std::pair<int, std::string>(CUDA_ERROR_CONTEXT_IS_DESTROYED,
-                                        "CUDA_ERROR_CONTEXT_IS_DESTROYED"));
-        g_errorStrings.insert(std::pair<int, std::string>(
-            CUDA_ERROR_UNKNOWN, "CUDA_ERROR_UNKNOWN"));
+void _checkError(int rCode, std::string file, int line, std::string desc = "") {
+    if (rCode != CUDA_SUCCESS) {
+        const char *err;
+        cuGetErrorString((CUresult)rCode, &err);
+
+        throw std::runtime_error(
+            (desc == "" ? std::string("Error (")
+                        : (std::string("Error in ") + desc + " (")) +
+            file + ":" + std::to_string(line) + "): " + err);
+        // Yes, this *is* a memory leak, but this block is only executed on
+        // error, so it's not a big deal
+    }
     }
 
-    if (rCode != CUDA_SUCCESS)
-        throw((desc == "")
-                  ? std::string("Error: ")
-                  : (std::string("Error in \"") + desc + std::string("\": "))) +
-            g_errorStrings[rCode];
+void _checkError(cublasStatus_t rCode, std::string file, int line,
+                 std::string desc = "") {
+    if (rCode != CUBLAS_STATUS_SUCCESS) {
+        const char *err = cublasGetStatusString(rCode);
+        throw std::runtime_error(
+            (desc == "" ? std::string("Error (")
+                        : (std::string("Error in ") + desc + " (")) +
+            file + ":" + std::to_string(line) + "): " + err);
+        // Yes, this *is* a memory leak, but this block is only executed on
+        // error, so it's not a big deal
 }
-
-void checkError(cublasStatus_t rCode, std::string desc = "") {
-    static std::map<cublasStatus_t, std::string> g_errorStrings;
-    if (!g_errorStrings.size()) {
-        g_errorStrings.insert(std::pair<cublasStatus_t, std::string>(
-            CUBLAS_STATUS_NOT_INITIALIZED, "CUBLAS_STATUS_NOT_INITIALIZED"));
-        g_errorStrings.insert(std::pair<cublasStatus_t, std::string>(
-            CUBLAS_STATUS_ALLOC_FAILED, "CUBLAS_STATUS_ALLOC_FAILED"));
-        g_errorStrings.insert(std::pair<cublasStatus_t, std::string>(
-            CUBLAS_STATUS_INVALID_VALUE, "CUBLAS_STATUS_INVALID_VALUE"));
-        g_errorStrings.insert(std::pair<cublasStatus_t, std::string>(
-            CUBLAS_STATUS_ARCH_MISMATCH, "CUBLAS_STATUS_ARCH_MISMATCH"));
-        g_errorStrings.insert(std::pair<cublasStatus_t, std::string>(
-            CUBLAS_STATUS_MAPPING_ERROR, "CUBLAS_STATUS_MAPPING_ERROR"));
-        g_errorStrings.insert(std::pair<cublasStatus_t, std::string>(
-            CUBLAS_STATUS_EXECUTION_FAILED, "CUBLAS_STATUS_EXECUTION_FAILED"));
-        g_errorStrings.insert(std::pair<cublasStatus_t, std::string>(
-            CUBLAS_STATUS_INTERNAL_ERROR, "CUBLAS_STATUS_INTERNAL_ERROR"));
     }
 
-    if (rCode != CUBLAS_STATUS_SUCCESS)
-        throw((desc == "")
-                  ? std::string("Error: ")
-                  : (std::string("Error in \"") + desc + std::string("\": "))) +
-            g_errorStrings[rCode];
-}
+#define checkError(rCode, ...)                                                 \
+    _checkError(rCode, __FILE__, __LINE__, ##__VA_ARGS__)
 
 double getTime() {
     struct timeval t;
@@ -401,8 +318,8 @@ void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors,
     try {
         our = new GPU_Test<T>(index, doubles, tensors, kernelFile);
         our->initBuffers(A, B, useBytes);
-    } catch (std::string e) {
-        fprintf(stderr, "Couldn't init a GPU test: %s\n", e.c_str());
+    } catch (const std::exception &e) {
+        fprintf(stderr, "Couldn't init a GPU test: %s\n", e.what());
         exit(EMEDIUMTYPE);
     }
 
@@ -438,8 +355,8 @@ void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors,
         for (int i = 0; i < maxEvents; ++i)
             cuEventSynchronize(events[i]);
         delete our;
-    } catch (std::string e) {
-        fprintf(stderr, "Failure during compute: %s\n", e.c_str());
+    } catch (const std::exception &e) {
+        fprintf(stderr, "Failure during compute: %s\n", e.what());
         int ops = -1;
         // Signalling that we failed
         write(writeFd, &ops, sizeof(int));
