@@ -16,6 +16,10 @@ To build GPU Burn:
 
 `make CUDA_PATH=<path/to/cuda-<version>`
 
+To build GPU Burn with EasyBuild module env loaded:
+
+`make`
+
 To remove artifacts built by GPU Burn:
 
 `make clean`
