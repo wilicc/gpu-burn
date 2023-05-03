@@ -14,7 +14,7 @@ docker run --rm --gpus all gpu_burn
 # Building
 To build GPU Burn:
 
-`make`
+`make CUDA_PATH=<path/to/cuda-<version>`
 
 To remove artifacts built by GPU Burn:
 
@@ -23,33 +23,27 @@ To remove artifacts built by GPU Burn:
 GPU Burn builds with a default Compute Capability of 5.0.
 To override this with a different value:
 
-`make COMPUTE=<compute capability value>`
+`make CUDA_PATH=<path/to/cuda-<version> COMPUTE=<compute capability value>`
 
 CFLAGS can be added when invoking make to add to the default
 list of compiler flags:
 
-`make CFLAGS=-Wall`
+`make CUDA_PATH=<path/to/cuda-<version> CFLAGS=-Wall`
 
 LDFLAGS can be added when invoking make to add to the default
 list of linker flags:
 
-`make LDFLAGS=-lmylib`
+`make CUDA_PATH=<path/to/cuda-<version> LDFLAGS=-lmylib`
 
 NVCCFLAGS can be added when invoking make to add to the default
 list of nvcc flags:
 
-`make NVCCFLAGS=-ccbin <path to host compiler>`
-
-CUDAPATH can be added to point to a non standard install or
-specific version of the cuda toolkit (default is 
-/usr/local/cuda):
-
-`make CUDAPATH=/usr/local/cuda-<version>`
+`make CUDA_PATH=<path/to/cuda-<version> NVCCFLAGS=-ccbin <path to host compiler>`
 
 CCPATH can be specified to point to a specific gcc (default is
 /usr/bin):
 
-`make CCPATH=/usr/local/bin`
+`make CUDA_PATH=<path/to/cuda-<version> CCPATH=/usr/local/bin`
 
 CUDA_VERSION and IMAGE_DISTRO can be used to override the base
 images used when building the Docker `image` target, while IMAGE_NAME
