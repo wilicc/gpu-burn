@@ -1,5 +1,4 @@
-CUDAPATH ?= /usr/local/cuda
-
+CUDAPATH ?= ${CUDA_PATH}
 NVCC     :=  ${CUDAPATH}/bin/nvcc
 CCPATH   ?=
 
