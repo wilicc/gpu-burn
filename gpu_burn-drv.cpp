@@ -985,6 +985,14 @@ int main(int argc, char **argv) {
                 thisParam++;
             }
         }
+        if (argc >= 2 && strncmp(argv[i], "-L", 2) == 0) {
+            thisParam++;
+
+            if (argv[i + 1]) {
+                logger.setLevel(atoi(argv[i + 1]));
+                thisParam++;
+            }
+        }
     }
 
     if (argc - thisParam < 2)
