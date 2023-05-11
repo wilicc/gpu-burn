@@ -41,12 +41,15 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <errno.h>
 #include <exception>
 #include <fstream>
 #include <map>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdexcept>
+#include <stdio.h>
 #include <string.h>
 #include <string>
 #include <sys/time.h>
@@ -58,6 +61,129 @@
 #include <vector>
 
 #define SIGTERM_TIMEOUT_THRESHOLD_SECS 30 // number of seconds for sigterm to kill child processes before forcing a sigkill
+
+class Logger {
+    /* logger class with log levels and log message formatting */
+
+    // TIMESTAMP
+    char* timestamp_str() {
+        /* returns a timestamp string */
+
+        // gets current timestamp
+        time_t now = time(0);
+
+        // converts to string
+        char *time_str = ctime(&now);
+
+        // removes extraneous line break
+        if (time_str[strlen(time_str)-1] == '\n')
+            time_str[strlen(time_str)-1] = '\0';
+
+        return time_str;
+    }
+
+    // LOG MESSAGE TEMPLATE
+    void msg_prefix(int logLevel) {
+        /* beginning of the log message */
+        printf("[%s | %s] ", timestamp_str(), logLevels.at(logLevel));
+    }
+
+    void msg_suffix() {
+        /* end of the log message */
+        printf("\n");
+    }
+
+    protected:
+        // LOG LEVELS
+        const int DEBUG   = 0;
+        const int VERBOSE = 1;
+        const int INFO    = 2;
+        const int WARN    = 3;
+        const int ERROR   = 4;
+        const int NONE    = 5;
+        const std::vector<const char*> logLevels = {
+            "DEBUG",
+            "VERBOSE",
+            "INFO",
+            "WARN",
+            "ERROR",
+            "NONE",
+        };
+
+        // SET DEFAULT LOG LEVEL
+        int LEVEL = VERBOSE;
+
+    public:
+        void setLevel(int level) {
+            LEVEL = level;
+        }
+
+        int getLevel() {
+            return LEVEL;
+        }
+
+        const char* getLogLevels(int level) {
+            return logLevels.at(level);
+        }
+
+        // LOG MESSAGE FUNCTIONS
+        void debug(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= DEBUG) {
+                msg_prefix(DEBUG);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void verbose(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= VERBOSE) {
+                msg_prefix(VERBOSE);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void info(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= INFO) {
+                msg_prefix(INFO);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void warn(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= WARN) {
+                msg_prefix(WARN);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void error(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= ERROR) {
+                msg_prefix(ERROR);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+};
+
+Logger logger; // initialize logger
 
 #include "cublas_v2.h"
 #define CUDA_ENABLE_DEPRECATED
@@ -741,8 +867,11 @@ void showHelp() {
            COMPARE_KERNEL);
     printf("-stts T\tSet timeout threshold to T seconds for using SIGTERM to abort child processes before using SIGKILL.  Default is %d\n",
            SIGTERM_TIMEOUT_THRESHOLD_SECS);
+    printf("-L L\tSet the log level L; options are 0 (DEBUG), 1 (VERBOSE), 2 (INFO), 3 (WARN), 4 (ERROR), 5 (NONE).  Default is %s\n",
+            logger.getLogLevels(logger.getLevel()));
     printf("-h\tShow this help message\n\n");
     printf("Examples:\n");
+    printf("  gpu-burn -L 2 -tc 60 # burns all GPUs with tensor core for a minute and log INFO level and higher messages\n");
     printf("  gpu-burn -d 3600 # burns all GPUs with doubles for an hour\n");
     printf(
         "  gpu-burn -m 50%% # burns using 50% of the available GPU memory\n");
