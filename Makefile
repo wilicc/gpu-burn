@@ -7,6 +7,7 @@ CFLAGS   ?=
 CFLAGS   += -O3
 CFLAGS   += -Wno-unused-result
 CFLAGS   += -I${CUDAPATH}/include
+CFLAGS   += -std=c++11
 
 LDFLAGS  ?=
 LDFLAGS  += -lcuda
