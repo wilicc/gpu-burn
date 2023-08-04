@@ -11,7 +11,9 @@ CFLAGS   += -I${CUDAPATH}/include
 LDFLAGS  ?=
 LDFLAGS  += -lcuda
 LDFLAGS  += -L${CUDAPATH}/lib64
+LDFLAGS  += -L${CUDAPATH}/lib64/stubs
 LDFLAGS  += -L${CUDAPATH}/lib
+LDFLAGS  += -L${CUDAPATH}/lib/stubs
 LDFLAGS  += -Wl,-rpath=${CUDAPATH}/lib64
 LDFLAGS  += -Wl,-rpath=${CUDAPATH}/lib
 LDFLAGS  += -lcublas
