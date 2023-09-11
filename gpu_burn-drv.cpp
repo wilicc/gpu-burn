@@ -745,7 +745,7 @@ void showHelp() {
     printf("Examples:\n");
     printf("  gpu-burn -d 3600 # burns all GPUs with doubles for an hour\n");
     printf(
-        "  gpu-burn -m 50%% # burns using 50% of the available GPU memory\n");
+        "  gpu-burn -m 50%% # burns using 50%% of the available GPU memory\n");
     printf("  gpu-burn -l # list GPUs\n");
     printf("  gpu-burn -i 2 # burns only GPU of index 2\n");
 }
@@ -791,7 +791,7 @@ int main(int argc, char **argv) {
                 checkError(cuDeviceGetName(device_name, 255, device_l));
                 size_t device_mem_l;
                 checkError(cuDeviceTotalMem(&device_mem_l, device_l));
-                printf("ID %i: %s, %dMB\n", i_dev, device_name,
+                printf("ID %i: %s, %ldMB\n", i_dev, device_name,
                        device_mem_l / 1000 / 1000);
             }
             thisParam++;
