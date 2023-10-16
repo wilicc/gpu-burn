@@ -79,7 +79,11 @@ void _checkError(int rCode, std::string file, int line, std::string desc = "") {
 
 void _checkError(cublasStatus_t rCode, std::string file, int line, std::string desc = "") {
     if (rCode != CUBLAS_STATUS_SUCCESS) {
-        const char *err = cublasGetStatusString(rCode);
+#if CUBLAS_VER_MAJOR >= 12
+		const char *err = cublasGetStatusString(rCode);
+#else
+		const char *err = "";
+#endif
         throw std::runtime_error(
             (desc == "" ? std::string("Error (")
                         : (std::string("Error in ") + desc + " (")) +
