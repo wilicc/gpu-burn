@@ -41,14 +41,19 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <errno.h>
 #include <exception>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdexcept>
+#include <stdio.h>
 #include <string.h>
 #include <string>
+#include <sstream>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -58,6 +63,129 @@
 #include <vector>
 
 #define SIGTERM_TIMEOUT_THRESHOLD_SECS 30 // number of seconds for sigterm to kill child processes before forcing a sigkill
+
+class Logger {
+    /* logger class with log levels and log message formatting */
+
+    // TIMESTAMP
+    char* timestamp_str() {
+        /* returns a timestamp string */
+
+        // gets current timestamp
+        time_t now = time(0);
+
+        // converts to string
+        char *time_str = ctime(&now);
+
+        // removes extraneous line break
+        if (time_str[strlen(time_str)-1] == '\n')
+            time_str[strlen(time_str)-1] = '\0';
+
+        return time_str;
+    }
+
+    // LOG MESSAGE TEMPLATE
+    void msg_prefix(int logLevel) {
+        /* beginning of the log message */
+        printf("[%s | %s] ", timestamp_str(), logLevels.at(logLevel));
+    }
+
+    void msg_suffix() {
+        /* end of the log message */
+        printf("\n");
+    }
+
+    protected:
+        // LOG LEVELS
+        const int DEBUG   = 0;
+        const int VERBOSE = 1;
+        const int INFO    = 2;
+        const int WARN    = 3;
+        const int ERROR   = 4;
+        const int NONE    = 5;
+        const std::vector<const char*> logLevels = {
+            "DEBUG",
+            "VERBOSE",
+            "INFO",
+            "WARN",
+            "ERROR",
+            "NONE",
+        };
+
+        // SET DEFAULT LOG LEVEL
+        int LEVEL = VERBOSE;
+
+    public:
+        void setLevel(int level) {
+            LEVEL = level;
+        }
+
+        int getLevel() {
+            return LEVEL;
+        }
+
+        const char* getLogLevels(int level) {
+            return logLevels.at(level);
+        }
+
+        // LOG MESSAGE FUNCTIONS
+        void debug(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= DEBUG) {
+                msg_prefix(DEBUG);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void verbose(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= VERBOSE) {
+                msg_prefix(VERBOSE);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void info(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= INFO) {
+                msg_prefix(INFO);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void warn(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= WARN) {
+                msg_prefix(WARN);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+
+        void error(const char *fmt, ...) {
+            va_list va_args;
+            if (LEVEL <= ERROR) {
+                msg_prefix(ERROR);
+                va_start(va_args, fmt);
+                vprintf(fmt, va_args);
+                va_end(va_args);
+                msg_suffix();
+            }
+        }
+};
+
+Logger logger; // initialize logger
 
 #include "cublas_v2.h"
 #define CUDA_ENABLE_DEPRECATED
@@ -135,10 +263,10 @@ template <class T> class GPU_Test {
         checkError(cuMemFree(d_Adata), "Free B");
         checkError(cuMemFree(d_Bdata), "Free C");
         cuMemFreeHost(d_faultyElemsHost);
-        printf("Freed memory for dev %d\n", d_devNumber);
+        logger.verbose("Freed memory for dev %d", d_devNumber);
 
         cublasDestroy(d_cublas);
-        printf("Uninitted cublas\n");
+        logger.verbose("Uninitted cublas");
     }
 
     static void termHandler(int signum) { g_running = false; }
@@ -178,7 +306,7 @@ template <class T> class GPU_Test {
         if (useBytes < 0)
             useBytes = (ssize_t)((double)availMemory() * (-useBytes / 100.0));
 
-        printf("Initialized device %d with %lu MB of memory (%lu MB available, "
+        logger.verbose("Initialized device %d with %lu MB of memory (%lu MB available, "
                "using %lu MB of it), %s%s\n",
                d_devNumber, totalMemory() / 1024ul / 1024ul,
                availMemory() / 1024ul / 1024ul, useBytes / 1024ul / 1024ul,
@@ -187,7 +315,7 @@ template <class T> class GPU_Test {
         size_t d_resultSize = sizeof(T) * SIZE * SIZE;
         d_iters = (useBytes - 2 * d_resultSize) /
                   d_resultSize; // We remove A and B sizes
-        printf("Results are %zu bytes each, thus performing %zu iterations\n",
+        logger.verbose("Results are %zu bytes each, thus performing %zu iterations",
                d_resultSize, d_iters);
         if ((size_t)useBytes < 3 * d_resultSize)
             throw std::string("Low mem for result. aborting.\n");
@@ -509,52 +637,54 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
         // Printing progress (if a child has initted already)
         if (childReport) {
+            std::stringstream progress_stream;
             float elapsed =
                 fminf((float)(thisTime - startTime) / (float)runTime * 100.0f,
                       100.0f);
-            printf("\r%.1f%%  ", elapsed);
-            printf("proc'd: ");
+            progress_stream << "Process Update:\n\tProgress (%): " << std::fixed << std::setprecision(1) << elapsed;
+            progress_stream << "\n\tproc'd      : ";
             for (size_t i = 0; i < clientCalcs.size(); ++i) {
-                printf("%d (%.0f Gflop/s) ", clientCalcs.at(i),
-                       clientGflops.at(i));
+                progress_stream << std::to_string(clientCalcs.at(i));
                 if (i != clientCalcs.size() - 1)
-                    printf("- ");
+                    progress_stream << ", ";
             }
-            printf("  errors: ");
+            progress_stream << "\n\tGflop/s     : ";
+            for (size_t i = 0; i < clientCalcs.size(); ++i) {
+                progress_stream << std::fixed << std::setprecision(1) << clientGflops.at(i);
+                if (i != clientCalcs.size() - 1)
+                    progress_stream << ", ";
+            }
+            progress_stream << "\n\terrors      : ";
             for (size_t i = 0; i < clientErrors.size(); ++i) {
-                std::string note = "%d ";
-                if (clientCalcs.at(i) == -1)
-                    note += " (DIED!)";
-                else if (clientErrors.at(i))
-                    note += " (WARNING!)";
+                progress_stream << clientErrors.at(i);
+                if (clientCalcs.at(i) == -1) {
+                    progress_stream << " (DIED!)";
+                }
+                else if (clientErrors.at(i)) {
+                    progress_stream << " (WARNING!)";
+                }
 
-                printf(note.c_str(), clientErrors.at(i));
-                if (i != clientCalcs.size() - 1)
-                    printf("- ");
+                if (i != clientCalcs.size() - 1) {
+                    progress_stream << ", ";
+                }
             }
-            printf("  temps: ");
+            progress_stream << "\n\ttemps (C)   : ";
             for (size_t i = 0; i < clientTemp.size(); ++i) {
-                printf(clientTemp.at(i) != 0 ? "%d C " : "-- ",
-                       clientTemp.at(i));
-                if (i != clientCalcs.size() - 1)
-                    printf("- ");
+                progress_stream << clientTemp.at(i);
+                if (i != clientCalcs.size() - 1) {
+                    progress_stream << ", ";
+                }
             }
-
-            fflush(stdout);
 
             for (size_t i = 0; i < clientErrors.size(); ++i)
                 if (clientErrors.at(i))
                     clientFaulty.at(i) = true;
 
-            if (nextReport < elapsed) {
+            if (nextReport <= elapsed) {
                 nextReport = elapsed + 10.0f;
-                printf("\n\tSummary at:   ");
-                fflush(stdout);
-                system("date"); // Printing a date
-                fflush(stdout);
-                printf("\n");
                 for (size_t i = 0; i < clientErrors.size(); ++i)
                     clientErrors.at(i) = 0;
+                logger.verbose("%s", progress_stream.str().c_str());
             }
         }
 
@@ -572,7 +702,45 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
             break;
     }
 
-    printf("\nKilling processes with SIGTERM (soft kill)\n");
+    // log out the final results
+    std::stringstream progress_stream;
+    progress_stream << "End of GPU Burn Results:\n\tProgress (%): 100";
+    progress_stream << "\n\tproc'd      : ";
+    for (size_t i = 0; i < clientCalcs.size(); ++i) {
+        progress_stream << std::to_string(clientCalcs.at(i));
+        if (i != clientCalcs.size() - 1)
+            progress_stream << ", ";
+    }
+    progress_stream << "\n\tGflop/s     : ";
+    for (size_t i = 0; i < clientCalcs.size(); ++i) {
+        progress_stream << std::fixed << std::setprecision(1) << clientGflops.at(i);
+        if (i != clientCalcs.size() - 1)
+            progress_stream << ", ";
+    }
+    progress_stream << "\n\terrors      : ";
+    for (size_t i = 0; i < clientErrors.size(); ++i) {
+        progress_stream << clientErrors.at(i);
+        if (clientCalcs.at(i) == -1) {
+            progress_stream << " (DIED!)";
+        }
+        else if (clientErrors.at(i)) {
+            progress_stream << " (DIED!)";
+        }
+        if (i != clientCalcs.size() - 1) {
+            progress_stream << ", ";
+        }
+    }
+    progress_stream << "\n\ttemps (C)   : ";
+    for (size_t i = 0; i < clientTemp.size(); ++i) {
+        progress_stream << clientTemp.at(i);
+        if (i != clientCalcs.size() - 1) {
+            progress_stream << ", ";
+        }
+    }
+
+    logger.verbose("%s", progress_stream.str().c_str());
+
+    logger.verbose("Killing processes with SIGTERM (soft kill)");
     fflush(stdout);
     for (size_t i = 0; i < clientPid.size(); ++i)
         kill(clientPid.at(i), SIGTERM);
@@ -603,7 +771,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
     // number of killed process should be number GPUs + 1 (need to add tempPid process) to exit while loop early
     if (killed_processes.size() != clientPid.size() + 1) {
-        printf("\nKilling processes with SIGKILL (force kill)\n");
+        logger.verbose("Killing (remaining) processes with SIGKILL (force kill)");
 
         for (size_t i = 0; i < clientPid.size(); ++i) {
             // check if pid was already killed with SIGTERM before using SIGKILL
@@ -620,18 +788,42 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
     while (wait(NULL) != -1)
         ;
-    printf("done\n");
+    logger.verbose("Killed all the jobs.");
 
-    printf("\nTested %d GPUs:\n", (int)clientPid.size());
+    logger.info("Tested %d GPUs:", (int)clientPid.size());
     for (size_t i = 0; i < clientPid.size(); ++i)
-        printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
+        logger.info("GPU %d: %s", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
+}
+
+std::string exec(std::string command) {
+    // execute command and capture the stdout
+    int buffer_size = 2048;
+    char buffer[2048];
+    std::string result = "";
+
+    // Open pipe to file
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) {
+        return "popen failed!";
+    }
+
+    // read till end of process:
+    while (!feof(pipe)) {
+
+        // use buffer to read and add to result
+        if (fgets(buffer, buffer_size, pipe) != NULL)
+            result += buffer;
+    }
+
+    pclose(pipe);
+    return result;
 }
 
 template <class T>
 void launch(int runLength, bool useDoubles, bool useTensorCores,
             ssize_t useBytes, int device_id, const char * kernelFile,
             std::chrono::seconds sigterm_timeout_threshold_secs) {
-    system("nvidia-smi -L");
+    logger.verbose("NVIDIA-SMI Output:\n%s", exec("nvidia-smi -L").c_str());
 
     // Initting A and B with random data
     T *A = (T *)malloc(sizeof(T) * SIZE * SIZE);
@@ -745,8 +937,11 @@ void showHelp() {
            COMPARE_KERNEL);
     printf("-stts T\tSet timeout threshold to T seconds for using SIGTERM to abort child processes before using SIGKILL.  Default is %d\n",
            SIGTERM_TIMEOUT_THRESHOLD_SECS);
+    printf("-L L\tSet the log level L; options are 0 (DEBUG), 1 (VERBOSE), 2 (INFO), 3 (WARN), 4 (ERROR), 5 (NONE).  Default is %s\n",
+            logger.getLogLevels(logger.getLevel()));
     printf("-h\tShow this help message\n\n");
     printf("Examples:\n");
+    printf("  gpu-burn -L 2 -tc 60 # burns all GPUs with tensor core for a minute and log INFO level and higher messages\n");
     printf("  gpu-burn -d 3600 # burns all GPUs with doubles for an hour\n");
     printf(
         "  gpu-burn -m 50%% # burns using 50%% of the available GPU memory\n");
@@ -860,21 +1055,32 @@ int main(int argc, char **argv) {
                 thisParam++;
             }
         }
+        if (argc >= 2 && strncmp(argv[i], "-L", 2) == 0) {
+            thisParam++;
+
+            if (argv[i + 1]) {
+                logger.setLevel(atoi(argv[i + 1]));
+                thisParam++;
+            }
+        }
     }
 
     if (argc - thisParam < 2)
-        printf("Run length not specified in the command line. ");
+        logger.warn("Run length not specified in the command line.");
     else
         runLength = atoi(argv[1 + thisParam]);
-    printf("Using compare file: %s\n", kernelFile);
-    printf("Burning for %d seconds.\n", runLength);
+    logger.verbose("Using compare file: %s", kernelFile);
+    logger.verbose("Burning for %d seconds.", runLength);
 
-    if (useDoubles)
+    if (useDoubles) {
+        logger.verbose("Launching with doubles");
         launch<double>(runLength, useDoubles, useTensorCores, useBytes,
                        device_id, kernelFile, sigterm_timeout_threshold_secs);
-    else
+    }
+    else {
+        logger.verbose("Launching with floats");
         launch<float>(runLength, useDoubles, useTensorCores, useBytes,
                       device_id, kernelFile, sigterm_timeout_threshold_secs);
-
+    }
     return 0;
 }
