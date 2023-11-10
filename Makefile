@@ -1,4 +1,8 @@
-#CUDAPATH ?= /usr/local/cuda
+ifneq ("$(wildcard /usr/bin/nvcc)", "")
+CUDAPATH ?= /usr
+else ifneq ("$(wildcard /usr/local/cuda/bin/nvcc)", "")
+CUDAPATH ?= /usr/local/cuda
+endif
 
 NVCC     :=  ${CUDAPATH}/bin/nvcc
 CCPATH   ?=
