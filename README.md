@@ -11,6 +11,10 @@ docker build -t gpu_burn .
 docker run --rm --gpus all gpu_burn
 ```
 
+# Binary packages
+
+https://repology.org/project/gpu-burn/versions
+
 # Building
 To build GPU Burn:
 
