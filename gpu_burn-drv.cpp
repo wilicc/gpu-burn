@@ -733,7 +733,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
 
 void showHelp() {
     printf("GPU Burn\n");
-    printf("Usage: gpu_burn [OPTIONS] [TIME]\n\n");
+    printf("Usage: gpu-burn [OPTIONS] [TIME]\n\n");
     printf("-m X\tUse X MB of memory.\n");
     printf("-m N%%\tUse N%% of the available GPU memory.  Default is %d%%\n",
            (int)(USEMEM * 100));
