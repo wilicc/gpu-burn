@@ -300,7 +300,12 @@ template <class T> class GPU_Test {
 
 // Returns the number of devices
 int initCuda() {
-    checkError(cuInit(0));
+	try {
+		checkError(cuInit(0));
+	} catch (std::runtime_error e) {
+		fprintf(stderr, "Couldn't init CUDA: %s\n", e.what());
+		return 0;
+	}
     int deviceCount = 0;
     checkError(cuDeviceGetCount(&deviceCount));
 
