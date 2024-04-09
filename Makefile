@@ -4,14 +4,16 @@ else ifneq ("$(wildcard /usr/local/cuda/bin/nvcc)", "")
 CUDAPATH ?= /usr/local/cuda
 endif
 
-NVCC     :=  ${CUDAPATH}/bin/nvcc
-CCPATH   ?=
+IS_JETSON   ?= $(shell if grep -Fwq "Jetson" /proc/device-tree/model 2>/dev/null; then echo true; else echo false; fi)
+NVCC        :=  ${CUDAPATH}/bin/nvcc
+CCPATH      ?=
 
 override CFLAGS   ?=
 override CFLAGS   += -O3
 override CFLAGS   += -Wno-unused-result
 override CFLAGS   += -I${CUDAPATH}/include
 override CFLAGS   += -std=c++11
+override CFLAGS   += -DIS_JETSON=${IS_JETSON}
 
 override LDFLAGS  ?=
 override LDFLAGS  += -lcuda
