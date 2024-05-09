@@ -440,6 +440,53 @@ void updateTemps(int handle, std::vector<int> *temps) {
 #endif
 }
 
+int pollPower(pid_t *p) {
+    int powerPipe[2];
+    pipe(powerPipe);
+
+    pid_t myPid = fork();
+
+    if (!myPid) {
+        close(powerPipe[0]);
+        dup2(powerPipe[1], STDOUT_FILENO);
+        execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d", "POWER",
+               NULL);
+        fprintf(stderr, "Could not invoke nvidia-smi, no power available\n");
+        exit(ENODEV);
+    }
+
+    *p = myPid;
+    close(powerPipe[1]);
+
+    return powerPipe[0];
+}
+
+void updatePowers(int handle, std::vector<int> *powers) {
+    const int readSize = 10240;
+    static int gpuIter = 0;
+    char data[readSize + 1];
+
+    int curPos = 0;
+    do {
+        read(handle, data + curPos, sizeof(char));
+    } while (data[curPos++] != '\n');
+
+    data[curPos - 1] = 0;
+
+    // FIXME: The syntax of this print might change in the future..
+    float powerValue;
+    if (sscanf(data,
+               "%*[^P]Power Draw%*[^:]: %f W",
+               &powerValue) == 1) {
+        powers->at(gpuIter) = powerValue;
+        gpuIter = (gpuIter + 1) % (powers->size());
+    } else if (!strcmp(data, "		Gpu				"
+                             "	 : N/A"))
+        gpuIter =
+            (gpuIter + 1) %
+            (powers->size()); // We rotate the iterator for N/A values as well
+}
+
 void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
                    int runTime, std::chrono::seconds sigterm_timeout_threshold_secs) {
     fd_set waitHandles;
@@ -457,7 +504,21 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
         FD_SET(clientFd.at(i), &waitHandles);
     }
 
+    pid_t powerPid;
+    int powerHandle = pollPower(&powerPid);
+    int powerMaxHandle = powerHandle;
+
+    FD_ZERO(&waitHandles);
+    FD_SET(powerHandle, &waitHandles);
+
+    for (size_t i = 0; i < clientFd.size(); ++i) {
+        if (clientFd.at(i) > powerMaxHandle)
+            powerMaxHandle = clientFd.at(i);
+        FD_SET(clientFd.at(i), &waitHandles);
+    }
+
     std::vector<int> clientTemp;
+    std::vector<int> clientPower;
     std::vector<int> clientErrors;
     std::vector<int> clientCalcs;
     std::vector<struct timespec> clientUpdateTime;
@@ -468,6 +529,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
     for (size_t i = 0; i < clientFd.size(); ++i) {
         clientTemp.push_back(0);
+        clientPower.push_back(0);
         clientErrors.push_back(0);
         clientCalcs.push_back(0);
         struct timespec thisTime;
@@ -524,6 +586,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
         if (FD_ISSET(tempHandle, &waitHandles))
             updateTemps(tempHandle, &clientTemp);
+            updatePowers(powerHandle, &clientPower);
 
         // Resetting the listeners
         FD_ZERO(&waitHandles);
@@ -560,6 +623,14 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
             for (size_t i = 0; i < clientTemp.size(); ++i) {
                 printf(clientTemp.at(i) != 0 ? "%d C " : "-- ",
                        clientTemp.at(i));
+                if (i != clientCalcs.size() - 1)
+                    printf("- ");
+            }
+
+            printf("  power: ");
+            for (size_t i = 0; i < clientPower.size(); ++i) {
+                printf(clientPower.at(i) != 0 ? "%d W " : "-- ",
+                       clientPower.at(i));
                 if (i != clientCalcs.size() - 1)
                     printf("- ");
             }
@@ -624,6 +695,13 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
         /* child is finished. exit status in status */
         killed_processes.push_back(return_pid);
     }
+    // handle the powerPid
+    int power_status;
+    pid_t power_return_pid = waitpid(powerPid, &power_status, WNOHANG);
+    if (power_return_pid == powerPid) {
+        /* child is finished. exit status in status */
+        killed_processes.push_back(power_return_pid);
+    }
 
     // number of killed process should be number GPUs + 1 (need to add tempPid process) to exit while loop early
     if (killed_processes.size() != clientPid.size() + 1) {
@@ -641,6 +719,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
     }
 
     close(tempHandle);
+    close(powerHandle);
 
     while (wait(NULL) != -1)
         ;
