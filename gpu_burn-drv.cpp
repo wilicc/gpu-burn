@@ -374,7 +374,7 @@ void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors,
     }
 }
 
-int pollTemp(pid_t *p) {
+int pollTemp(pid_t *p, int device_id) {
     int tempPipe[2];
     pipe(tempPipe);
 
@@ -387,8 +387,13 @@ int pollTemp(pid_t *p) {
         execlp("tegrastats", "tegrastats", "--interval", "5000", NULL);
         fprintf(stderr, "Could not invoke tegrastats, no temps available\n");
 #else
-        execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d", "TEMPERATURE",
-               NULL);
+        if (device_id > -1) {
+            execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d", "TEMPERATURE",
+                   "-i", std::to_string(device_id).c_str(), NULL);
+        } else {
+            execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d", "TEMPERATURE",
+                   NULL);
+        }
         fprintf(stderr, "Could not invoke nvidia-smi, no temps available\n");
 #endif
 
@@ -441,11 +446,12 @@ void updateTemps(int handle, std::vector<int> *temps) {
 }
 
 void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
-                   int runTime, std::chrono::seconds sigterm_timeout_threshold_secs) {
+                   int runTime, std::chrono::seconds sigterm_timeout_threshold_secs,
+                   int device_id) {
     fd_set waitHandles;
 
     pid_t tempPid;
-    int tempHandle = pollTemp(&tempPid);
+    int tempHandle = pollTemp(&tempPid, device_id);
     int maxHandle = tempHandle;
 
     FD_ZERO(&waitHandles);
@@ -700,7 +706,8 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             close(mainPipe[1]);
             int devCount;
             read(readMain, &devCount, sizeof(int));
-            listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
+            listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs,
+                          device_id);
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
             close(clientPipes.at(i));
@@ -751,7 +758,8 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
                     }
                 }
 
-                listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
+                listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs,
+                              device_id);
             }
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
