@@ -21,7 +21,7 @@ on:
 env:
   AWS_REGION: ap-northeast-2                  # 원하는 AWS 리전으로 설정
   ECR_REPOSITORY: burn-test          # Amazon ECR 퍼블릭 리포지토리 이름
-  ECR_REGISTRY: public.ecr.aws/x9e1n4d6
+  ECR_REGISTRY: public.ecr.aws/x9e1n4d6  # Amazon ECR 퍼블릭 레지스트리 URI
 
 permissions:
   contents: read
