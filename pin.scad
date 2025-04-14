@@ -19,30 +19,4 @@ union() {
     // Head on top
     translate([0, 0, pin_length])
         cylinder(h = head_height, d = head_diameter, center = false);
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
 }
