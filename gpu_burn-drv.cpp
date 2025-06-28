@@ -653,7 +653,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
 template <class T>
 void launch(int runLength, bool useDoubles, bool useTensorCores,
-            ssize_t useBytes, int device_id, const char * kernelFile,
+            ssize_t useBytes, std::vector<int> device_ids, const char * kernelFile,
             std::chrono::seconds sigterm_timeout_threshold_secs) {
 #if IS_JETSON
     std::ifstream f_model("/proc/device-tree/model");
@@ -682,16 +682,16 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
     std::vector<pid_t> clientPids;
     clientPipes.push_back(readMain);
 
-    if (device_id > -1) {
+    if (!device_ids.empty()) {
+        // Using specific device IDs
         pid_t myPid = fork();
         if (!myPid) {
             // Child
             close(mainPipe[0]);
             int writeFd = mainPipe[1];
-            initCuda();
-            int devCount = 1;
+            int devCount = initCuda();
             write(writeFd, &devCount, sizeof(int));
-            startBurn<T>(device_id, writeFd, A, B, useDoubles, useTensorCores,
+            startBurn<T>(device_ids[0], writeFd, A, B, useDoubles, useTensorCores,
                          useBytes, kernelFile);
             close(writeFd);
             return;
@@ -700,6 +700,30 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             close(mainPipe[1]);
             int devCount;
             read(readMain, &devCount, sizeof(int));
+            
+            // Fork additional processes for remaining specified devices
+            for (size_t i = 1; i < device_ids.size(); ++i) {
+                int slavePipe[2];
+                pipe(slavePipe);
+                clientPipes.push_back(slavePipe[0]);
+
+                pid_t slavePid = fork();
+
+                if (!slavePid) {
+                    // Child
+                    close(slavePipe[0]);
+                    initCuda();
+                    startBurn<T>(device_ids[i], slavePipe[1], A, B, useDoubles,
+                                 useTensorCores, useBytes, kernelFile);
+
+                    close(slavePipe[1]);
+                    return;
+                } else {
+                    clientPids.push_back(slavePid);
+                    close(slavePipe[1]);
+                }
+            }
+            
             listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
@@ -771,7 +795,7 @@ void showHelp() {
     printf("-d\tUse doubles\n");
     printf("-tc\tTry to use Tensor cores\n");
     printf("-l\tLists all GPUs in the system\n");
-    printf("-i N\tExecute only on GPU N\n");
+    printf("-i N\tExecute only on GPU N (can be specified multiple times)\n");
     printf("-c FILE\tUse FILE as compare kernel.  Default is %s\n",
            COMPARE_KERNEL);
     printf("-stts T\tSet timeout threshold to T seconds for using SIGTERM to abort child processes before using SIGKILL.  Default is %d\n",
@@ -783,6 +807,7 @@ void showHelp() {
         "  gpu-burn -m 50%% # burns using 50%% of the available GPU memory\n");
     printf("  gpu-burn -l # list GPUs\n");
     printf("  gpu-burn -i 2 # burns only GPU of index 2\n");
+    printf("  gpu-burn -i 0 -i 2 -i 3 # burns only GPUs 0, 2, and 3\n");
 }
 
 // NNN MB
@@ -804,7 +829,7 @@ int main(int argc, char **argv) {
     bool useTensorCores = false;
     int thisParam = 0;
     ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
-    int device_id = -1;
+    std::vector<int> device_ids;
     char *kernelFile = (char *)COMPARE_KERNEL;
     std::chrono::seconds sigterm_timeout_threshold_secs = std::chrono::seconds(SIGTERM_TIMEOUT_THRESHOLD_SECS);
 
@@ -865,11 +890,13 @@ int main(int argc, char **argv) {
             thisParam++;
 
             if (argv[i][2]) {
-                device_id = strtol(argv[i] + 2, NULL, 0);
+                // -iN format
+                device_ids.push_back(strtol(argv[i] + 2, NULL, 0));
             } else if (i + 1 < args.size()) {
+                // -i N format
                 i++;
                 thisParam++;
-                device_id = strtol(argv[i], NULL, 0);
+                device_ids.push_back(strtol(argv[i], NULL, 0));
             } else {
                 fprintf(stderr, "Syntax error near -i\n");
                 exit(EINVAL);
@@ -902,10 +929,10 @@ int main(int argc, char **argv) {
 
     if (useDoubles)
         launch<double>(runLength, useDoubles, useTensorCores, useBytes,
-                       device_id, kernelFile, sigterm_timeout_threshold_secs);
+                       device_ids, kernelFile, sigterm_timeout_threshold_secs);
     else
         launch<float>(runLength, useDoubles, useTensorCores, useBytes,
-                      device_id, kernelFile, sigterm_timeout_threshold_secs);
+                      device_ids, kernelFile, sigterm_timeout_threshold_secs);
 
     return 0;
 }
