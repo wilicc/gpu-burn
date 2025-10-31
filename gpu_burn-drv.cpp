@@ -110,7 +110,11 @@ template <class T> class GPU_Test {
     GPU_Test(int dev, bool doubles, bool tensors, const char *kernelFile)
         : d_devNumber(dev), d_doubles(doubles), d_tensors(tensors), d_kernelFile(kernelFile){
         checkError(cuDeviceGet(&d_dev, d_devNumber));
-        checkError(cuCtxCreate(&d_ctx, 0, d_dev));
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 13000
+            checkError(cuCtxCreate(&d_ctx, nullptr, 0, d_dev));
+#else
+            checkError(cuCtxCreate(&d_ctx, 0, d_dev));
+#endif
 
         bind();
 
@@ -300,12 +304,20 @@ template <class T> class GPU_Test {
 
 // Returns the number of devices
 int initCuda() {
-	try {
-		checkError(cuInit(0));
-	} catch (std::runtime_error e) {
-		fprintf(stderr, "Couldn't init CUDA: %s\n", e.what());
-		return 0;
-	}
+    try {
+        CUresult initResult = cuInit(0);
+        const char *initErrStr = "<unavailable>";
+        if (cuGetErrorString(initResult, &initErrStr) != CUDA_SUCCESS ||
+            initErrStr == nullptr) {
+                initErrStr = "<unavailable>";
+            }
+        fprintf(stderr, "cuInit returned %d (%s)\n", initResult,
+            initErrStr);
+        checkError(initResult);
+    } catch (std::runtime_error e) {
+        fprintf(stderr, "Couldn't init CUDA: %s\n", e.what());
+        return 0;
+    }
     int deviceCount = 0;
     checkError(cuDeviceGetCount(&deviceCount));
 
