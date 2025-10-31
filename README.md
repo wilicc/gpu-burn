@@ -1,21 +1,29 @@
 # gpu-burn
+
 Multi-GPU CUDA stress test
-http://wili.cc/blog/gpu-burn.html
+<http://wili.cc/blog/gpu-burn.html>
 
-# Easy docker build and run
+- [gpu-burn](#gpu-burn)
+  - [Easy docker build and run](#easy-docker-build-and-run)
+  - [Binary packages](#binary-packages)
+  - [Building](#building)
+  - [Usage](#usage)
 
-```
+## Easy docker build and run
+
+```plain
 git clone https://github.com/wilicc/gpu-burn
 cd gpu-burn
 docker build -t gpu_burn .
 docker run --rm --gpus all gpu_burn
 ```
 
-# Binary packages
+## Binary packages
 
-https://repology.org/project/gpu-burn/versions
+<https://repology.org/project/gpu-burn/versions>
 
-# Building
+## Building
+
 To build GPU Burn:
 
 `make`
@@ -24,7 +32,7 @@ To remove artifacts built by GPU Burn:
 
 `make clean`
 
-GPU Burn builds with a default Compute Capability of 5.0.
+GPU Burn builds with a default Compute Capability of 7.5 as specified on NVIDIA's [CUDA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus).
 To override this with a different value:
 
 `make COMPUTE=<compute capability value>`
@@ -45,7 +53,7 @@ list of nvcc flags:
 `make NVCCFLAGS=-ccbin <path to host compiler>`
 
 CUDAPATH can be added to point to a non standard install or
-specific version of the cuda toolkit (default is 
+specific version of the cuda toolkit (default is
 /usr/local/cuda):
 
 `make CUDAPATH=/usr/local/cuda-<version>`
@@ -61,8 +69,9 @@ can be set to change the resulting image tag:
 
 `make IMAGE_NAME=myregistry.private.com/gpu-burn CUDA_VERSION=12.0.1 IMAGE_DISTRO=ubuntu22.04 image`
 
-# Usage
+## Usage
 
+```plain
     GPU Burn
     Usage: gpu_burn [OPTIONS] [TIME]
     
@@ -76,3 +85,4 @@ can be set to change the resulting image tag:
     
     Example:
     gpu_burn -d 3600
+```
