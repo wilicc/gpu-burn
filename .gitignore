@@ -1,6 +1,6 @@
-
+*.o
 gpu_burn-drv\.o
-
 compare\.ptx
-
 gpu_burn
+gpu_burn_hip
+*_hip.cpp
