@@ -30,7 +30,14 @@
 // Matrices are SIZE*SIZE..  POT should be efficiently implemented in CUBLAS
 #define SIZE 8192ul
 #define USEMEM 0.9 // Try to allocate 90% of memory
+		   //
+#if defined(__TARGET_NVIDIA)
 #define COMPARE_KERNEL "compare.ptx"
+#elif defined(__TARGET_AMD)
+#define COMPARE_KERNEL "compare.o"
+#else
+#error "Either __TARGET_NVIDIA or __TARGET_AMD must be defined!"
+#endif
 
 // Used to report op/s, measured through Visual Profiler, CUBLAS from CUDA 7.5
 // (Seems that they indeed take the naive dim^3 approach)
@@ -245,8 +252,12 @@ template <class T> class GPU_Test {
                                        d_doubles ? "compareD" : "compare"),
                    "get func");
 
+#if defined(__TARGET_NVIDIA)
+// NOTE:
+// * this function is available in hip, but it is not converted by hipify-perl ?
         checkError(cuFuncSetCacheConfig(d_function, CU_FUNC_CACHE_PREFER_L1),
                    "L1 config");
+
         checkError(cuParamSetSize(d_function, __alignof(T *) +
                                                   __alignof(int *) +
                                                   __alignof(size_t)),
@@ -262,13 +273,16 @@ template <class T> class GPU_Test {
 
         checkError(cuFuncSetBlockShape(d_function, g_blockSize, g_blockSize, 1),
                    "set block size");
+#endif // __TARGET_NVIDIA
     }
 
     void compare() {
         checkError(cuMemsetD32Async(d_faultyElemData, 0, 1, 0), "memset");
+#if defined(__TARGET_NVIDIA)
         checkError(cuLaunchGridAsync(d_function, SIZE / g_blockSize,
                                      SIZE / g_blockSize, 0),
                    "Launch grid");
+#endif // __TARGET_NVIDIA	
         checkError(cuMemcpyDtoHAsync(d_faultyElemsHost, d_faultyElemData,
                                      sizeof(int), 0),
                    "Read faultyelemdata");
@@ -534,8 +548,13 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
                 childReport = true;
             }
 
+#if defined(__TARGET_NVIDIA)
+	// TODO: fix temps for AMD
+	// if nvidia-smi is not available, this currently leads to a segmentation 
+	// fault on AMD cards
         if (FD_ISSET(tempHandle, &waitHandles))
             updateTemps(tempHandle, &clientTemp);
+#endif
 
         // Resetting the listeners
         FD_ZERO(&waitHandles);
@@ -667,6 +686,7 @@ template <class T>
 void launch(int runLength, bool useDoubles, bool useTensorCores,
             ssize_t useBytes, int device_id, const char * kernelFile,
             std::chrono::seconds sigterm_timeout_threshold_secs) {
+#if defined(__TARGET_NVIDIA)
 #if IS_JETSON
     std::ifstream f_model("/proc/device-tree/model");
     std::stringstream ss_model;
@@ -674,6 +694,10 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
     printf("%s\n", ss_model.str().c_str());
 #else
     system("nvidia-smi -L");
+#endif
+#endif  // __TARGET_NVIDIA
+#if defined(__TARGET_AMD)
+    system("amd-smi list");
 #endif
 
     // Initting A and B with random data
