@@ -810,6 +810,22 @@ ssize_t decodeUSEMEM(const char *s) {
     return (*s2 == 0) ? r * 1024 * 1024 : 0;
 }
 
+int parseTime(const char* timeStr) {
+    if (!timeStr || !*timeStr) return 0;
+    
+    char* end;
+    long val = strtol(timeStr, &end, 10);
+    if (end == timeStr) return 0;
+    
+    switch (*end) {
+        case '\0': case 's': case 'S': return (int)val;
+        case 'm': case 'M': return (int)(val * 60);
+        case 'h': case 'H': return (int)(val * 3600);
+        case 'd': case 'D': return (int)(val * 86400);
+        default: return 0;
+    }
+}
+
 int main(int argc, char **argv) {
     int runLength = 10;
     bool useDoubles = false;
@@ -905,10 +921,16 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (argc - thisParam < 2)
-        printf("Run length not specified in the command line. ");
-    else
-        runLength = atoi(argv[1 + thisParam]);
+    if (argc - thisParam < 2) {
+    printf("Run length not specified in the command line. ");
+    runLength = 10; // default
+    } else {
+    runLength = parseTime(argv[1 + thisParam]);
+    if (runLength <= 0) {
+        fprintf(stderr, "Invalid time format: %s\n", argv[1 + thisParam]);
+        exit(EINVAL);
+      }
+    }
     printf("Using compare file: %s\n", kernelFile);
     printf("Burning for %d seconds.\n", runLength);
 
