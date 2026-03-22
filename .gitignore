@@ -3,4 +3,6 @@ gpu_burn-drv\.o
 
 compare\.ptx
 
+compare\.cubin
+
 gpu_burn

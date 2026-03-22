@@ -63,6 +63,11 @@ CCPATH can be specified to point to a specific gcc (default is
 
 `make CCPATH=/usr/local/bin`
 
+COMPARE_FORMAT can be set to `ptx` (default) or `cubin` to control
+the format of the compare kernel binary:
+
+`make COMPARE_FORMAT=cubin`
+
 CUDA_VERSION and IMAGE_DISTRO can be used to override the base
 images used when building the Docker `image` target, while IMAGE_NAME
 can be set to change the resulting image tag:

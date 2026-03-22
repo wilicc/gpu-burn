@@ -30,25 +30,38 @@ COMPUTE      ?= 75
 CUDA_VERSION ?= 11.8.0
 IMAGE_DISTRO ?= ubi8
 
+COMPARE_FORMAT ?= ptx
+
+ifeq ($(COMPARE_FORMAT),cubin)
+NVCC_ARCH      = sm_$(subst .,,${COMPUTE})
+else
+NVCC_ARCH      = compute_$(subst .,,${COMPUTE})
+endif
+
 override NVCCFLAGS ?=
 override NVCCFLAGS += -I${CUDAPATH}/include
-override NVCCFLAGS += -arch=compute_$(subst .,,${COMPUTE})
+override NVCCFLAGS += -arch=${NVCC_ARCH}
+override NVCCFLAGS += -${COMPARE_FORMAT}
+override CFLAGS    += -DCOMPARE_KERNEL=\"compare.$(COMPARE_FORMAT)\"
 
 IMAGE_NAME ?= gpu-burn
 
-.PHONY: clean
+.PHONY: clean image
 
-gpu_burn: gpu_burn-drv.o compare.ptx
+gpu_burn: gpu_burn-drv.o compare.$(COMPARE_FORMAT)
 	g++ -o $@ $< -O3 ${LDFLAGS}
 
 %.o: %.cpp
 	g++ ${CFLAGS} -c $<
 
 %.ptx: %.cu
-	PATH="${PATH}:${CCPATH}:." ${NVCC} ${NVCCFLAGS} -ptx $< -o $@
+	PATH="${PATH}:${CCPATH}:." ${NVCC} ${NVCCFLAGS} $< -o $@
+
+%.cubin: %.cu
+	PATH="${PATH}:${CCPATH}:." ${NVCC} ${NVCCFLAGS} $< -o $@
 
 clean:
-	$(RM) *.ptx *.o gpu_burn
+	$(RM) *.ptx *.cubin *.o gpu_burn
 
 image:
 	docker build --build-arg CUDA_VERSION=${CUDA_VERSION} --build-arg IMAGE_DISTRO=${IMAGE_DISTRO} -t ${IMAGE_NAME} .
