@@ -37,6 +37,14 @@ To override this with a different value:
 
 `make COMPUTE=<compute capability value>`
 
+`COMPUTE` selects a single virtual architecture for the default `-arch`
+flag.  For a fat binary targeting multiple architectures, or to opt into
+architecture-conditional (`sm_90a`) or family-specific (`compute_100f`)
+features, set `COMPUTE=` to suppress the default and drive the build
+entirely from `-gencode` flags via `NVCCFLAGS`:
+
+`make COMPUTE= NVCCFLAGS='-gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_90,code=sm_90'`
+
 CFLAGS can be added when invoking make to add to the default
 list of compiler flags:
 
