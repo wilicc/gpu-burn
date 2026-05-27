@@ -14,10 +14,14 @@ Multi-GPU CUDA stress test
 ```plain
 git clone https://github.com/wilicc/gpu-burn
 cd gpu-burn
-docker build -t gpu_burn .
-docker run --rm --gpus all gpu_burn
+docker build -t gpu-burn .
+docker run --rm --gpus all gpu-burn
 ```
+You can pass build arguments to specify the CUDA version, the compute capability, and base image distro, e.g.:
 
+```plain
+docker build --build-arg CUDA_VERSION=13.0.0 --build-arg COMPUTE=75 --build-arg IMAGE_DISTRO=ubi8 -t gpu-burn .
+```
 ## Binary packages
 
 <https://repology.org/project/gpu-burn/versions>
