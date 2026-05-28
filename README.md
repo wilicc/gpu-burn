@@ -14,10 +14,14 @@ Multi-GPU CUDA stress test
 ```plain
 git clone https://github.com/wilicc/gpu-burn
 cd gpu-burn
-docker build -t gpu_burn .
-docker run --rm --gpus all gpu_burn
+docker build -t gpu-burn .
+docker run --rm --gpus all gpu-burn
 ```
+You can pass build arguments to specify the CUDA version, the compute capability, and base image distro, e.g.:
 
+```plain
+docker build --build-arg CUDA_VERSION=13.0.0 --build-arg COMPUTE=75 --build-arg IMAGE_DISTRO=ubi8 -t gpu-burn .
+```
 ## Binary packages
 
 <https://repology.org/project/gpu-burn/versions>
@@ -36,6 +40,14 @@ GPU Burn builds with a default Compute Capability of 7.5 as specified on NVIDIA'
 To override this with a different value:
 
 `make COMPUTE=<compute capability value>`
+
+`COMPUTE` selects a single virtual architecture for the default `-arch`
+flag.  For a fat binary targeting multiple architectures, or to opt into
+architecture-conditional (`sm_90a`) or family-specific (`compute_100f`)
+features, set `COMPUTE=` to suppress the default and drive the build
+entirely from `-gencode` flags via `NVCCFLAGS`:
+
+`make COMPUTE= NVCCFLAGS='-gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_90,code=sm_90'`
 
 CFLAGS can be added when invoking make to add to the default
 list of compiler flags:

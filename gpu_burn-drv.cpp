@@ -30,7 +30,7 @@
 // Matrices are SIZE*SIZE..  POT should be efficiently implemented in CUBLAS
 #define SIZE 8192ul
 #define USEMEM 0.9 // Try to allocate 90% of memory
-#define COMPARE_KERNEL "compare.ptx"
+#define COMPARE_KERNEL "compare.fatbin"
 
 // Used to report op/s, measured through Visual Profiler, CUBLAS from CUDA 7.5
 // (Seems that they indeed take the naive dim^3 approach)
@@ -139,6 +139,7 @@ template <class T> class GPU_Test {
         checkError(cuMemFree(d_Cdata), "Free A");
         checkError(cuMemFree(d_Adata), "Free B");
         checkError(cuMemFree(d_Bdata), "Free C");
+        checkError(cuMemFree(d_faultyElemData), "Free faulty data");
         cuMemFreeHost(d_faultyElemsHost);
         printf("Freed memory for dev %d\n", d_devNumber);
 
