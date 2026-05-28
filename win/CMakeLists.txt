@@ -9,14 +9,26 @@ if(NOT DEFINED COMPUTE)
     set(COMPUTE "75" CACHE STRING "CUDA Compute Capability")
 endif()
 
-# Convert compute capability to arch format (e.g., 75 -> compute_75, 100 -> compute_100, 120 -> compute_120)
-if(COMPUTE MATCHES "^[0-9]+$")
-    set(COMPUTE_ARCH "compute_${COMPUTE}")
-else()
-    set(COMPUTE_ARCH "${COMPUTE}")
-endif()
+# Check if COMPUTE is a list of architectures (contains semicolons or spaces)
+string(REPLACE ";" " " COMPUTE_LIST "${COMPUTE}")
+separate_arguments(COMPUTE_ARGS WINDOWS_COMMAND "${COMPUTE_LIST}")
+list(LENGTH COMPUTE_ARGS COMPUTE_LEN)
 
-message(STATUS "Building for CUDA Compute Capability: ${COMPUTE_ARCH}")
+set(NVCC_FLAGS "-fatbin")
+if(COMPUTE_LEN GREATER 1)
+    foreach(ARCH IN LISTS COMPUTE_ARGS)
+        list(APPEND NVCC_FLAGS "-gencode=arch=compute_${ARCH},code=sm_${ARCH}")
+    endforeach()
+    message(STATUS "Building multi-architecture fatbin: ${COMPUTE}")
+else()
+    if(COMPUTE MATCHES "^[0-9]+$")
+        set(COMPUTE_ARCH "compute_${COMPUTE}")
+    else()
+        set(COMPUTE_ARCH "${COMPUTE}")
+    endif()
+    list(APPEND NVCC_FLAGS "-arch=${COMPUTE_ARCH}")
+    message(STATUS "Building for CUDA Compute Capability: ${COMPUTE_ARCH}")
+endif()
 
 # Find CUDA Toolkit
 find_package(CUDAToolkit REQUIRED)
@@ -32,9 +44,9 @@ set(FATBIN_FILE "${CMAKE_CURRENT_BINARY_DIR}/compare.fatbin")
 # Custom command to generate fatbin from CUDA kernel
 add_custom_command(
     OUTPUT ${FATBIN_FILE}
-    COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" -fatbin -arch=${COMPUTE_ARCH} "${CMAKE_CURRENT_SOURCE_DIR}/compare.cu" -o "${FATBIN_FILE}"
+    COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" ${NVCC_FLAGS} "${CMAKE_CURRENT_SOURCE_DIR}/compare.cu" -o "${FATBIN_FILE}"
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/compare.cu
-    COMMENT "Compiling CUDA kernel to fatbin for ${COMPUTE_ARCH}"
+    COMMENT "Compiling CUDA kernel to fatbin"
     VERBATIM
 )
 
