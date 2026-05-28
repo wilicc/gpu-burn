@@ -130,7 +130,7 @@ Instead of forking processes, Windows version uses threads:
 
 - Uses CUDA Driver API (cuInit, cuDeviceGet, etc.)
 - Uses CUBLAS for matrix operations
-- PTX kernel loading for comparison operations
+- Fatbin kernel loading for comparison operations
 
 ## Build Instructions
 
@@ -179,7 +179,7 @@ build.bat -c 120
 
 ### Known Limitations
 1. Temperature monitoring requires nvidia-smi.exe in PATH
-2. Thread termination uses TerminateThread (may not clean up resources)
+2. Thread termination fallback uses TerminateThread if graceful wait fails (destructors won't run on fallback termination)
 3. No Jetson support (Windows-specific)
 
 ### Compatibility
@@ -190,11 +190,10 @@ build.bat -c 120
 ## Future Improvements
 
 Potential enhancements:
-1. Better thread cleanup (graceful shutdown)
-2. Support for more compute capabilities
-3. GUI version
-4. Better error messages
-5. Logging to file option
+1. Support for more compute capabilities
+2. GUI version
+3. Better error messages
+4. Logging to file option
 
 ## Version History
 
@@ -252,6 +251,14 @@ Potential enhancements:
 - **Documentation**: Updated help to show all supported compute capabilities (75, 80, 86, 89, 90, 100, 120)
 - **GPU mapping**: Added GPU architecture examples for each compute capability
 - **Cross-platform consistency**: Both Linux and Windows now support the same build syntax
+
+### 2026-05-29 - Upstream Integration & Graceful Shutdown Optimization
+- **Upstream Merge**: Merged the latest commits from wilicc/gpu-burn including the memory leak fix for `d_faultyElemData` and the switch from `compare.ptx` to `compare.fatbin`.
+- **Memory Leak Fix**: Ported the `cuMemFree(d_faultyElemData)` fix to `~GPU_Test()` in `win/gpu_burn-drv.cpp`.
+- **Fatbin Switch**: Updated CMake build system and driver program to compile and load `compare.fatbin` instead of `compare.ptx`, aligning with upstream and allowing multi-architecture targeting.
+- **Deadlock Resolution**: Removed `FlushFileBuffers` call from GPU threads which previously deadlocked them against the main thread during shutdown.
+- **Graceful Thread Shutdown**: Replaced the unconditional 30-second sleep on exit with a dynamic wait using `WaitForMultipleObjects` (with sequential `WaitForSingleObject` fallback for >64 GPUs).
+- **Optimization**: Marked `g_running` as `volatile` to prevent compiler register-caching optimizations, allowing child threads to terminate immediately on shutdown request.
 
 ## References
 

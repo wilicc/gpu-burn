@@ -26,20 +26,20 @@ set(SOURCES
     gpu_burn-drv.cpp
 )
 
-# PTX file output
-set(PTX_FILE "${CMAKE_CURRENT_BINARY_DIR}/compare.ptx")
+# Fatbin file output
+set(FATBIN_FILE "${CMAKE_CURRENT_BINARY_DIR}/compare.fatbin")
 
-# Custom command to generate PTX from CUDA kernel
+# Custom command to generate fatbin from CUDA kernel
 add_custom_command(
-    OUTPUT ${PTX_FILE}
-    COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" -ptx -arch=${COMPUTE_ARCH} "${CMAKE_CURRENT_SOURCE_DIR}/compare.cu" -o "${PTX_FILE}"
+    OUTPUT ${FATBIN_FILE}
+    COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" -fatbin -arch=${COMPUTE_ARCH} "${CMAKE_CURRENT_SOURCE_DIR}/compare.cu" -o "${FATBIN_FILE}"
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/compare.cu
-    COMMENT "Compiling CUDA kernel to PTX for ${COMPUTE_ARCH}"
+    COMMENT "Compiling CUDA kernel to fatbin for ${COMPUTE_ARCH}"
     VERBATIM
 )
 
 # Add executable
-add_executable(gpu_burn ${SOURCES} ${PTX_FILE})
+add_executable(gpu_burn ${SOURCES} ${FATBIN_FILE})
 
 # Link CUDA libraries - Windows specific paths
 if(WIN32)
@@ -73,12 +73,12 @@ else()
     )
 endif()
 
-# Copy PTX file to output directory
+# Copy fatbin file to output directory
 add_custom_command(TARGET gpu_burn POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    ${PTX_FILE}
-    $<TARGET_FILE_DIR:gpu_burn>/compare.ptx
-    COMMENT "Copying PTX file to output directory"
+    ${FATBIN_FILE}
+    $<TARGET_FILE_DIR:gpu_burn>/compare.fatbin
+    COMMENT "Copying fatbin file to output directory"
 )
 
 # Compiler flags

@@ -103,7 +103,7 @@ gpu_burn.exe [OPTIONS] [TIME]
 - `-tc` - Try to use Tensor cores (if available)
 - `-l` - List all GPUs in the system
 - `-i N` - Execute only on GPU N
-- `-c FILE` - Use FILE as compare kernel (default: compare.ptx)
+- `-c FILE` - Use FILE as compare kernel (default: compare.fatbin)
 - `-stts T` - Set timeout threshold to T seconds (default: 30)
 - `-h` - Show help message
 

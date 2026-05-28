@@ -89,10 +89,10 @@ echo.
 echo Build completed successfully!
 if "%BUILD_TYPE%"=="Release" (
     echo Executable: build\Release\gpu_burn.exe
-    echo PTX file: build\Release\compare.ptx
+    echo Fatbin file: build\Release\compare.fatbin
 ) else (
     echo Executable: build\Debug\gpu_burn.exe
-    echo PTX file: build\Debug\compare.ptx
+    echo Fatbin file: build\Debug\compare.fatbin
 )
 goto :end
 

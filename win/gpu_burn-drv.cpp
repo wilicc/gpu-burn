@@ -61,7 +61,7 @@ typedef int ssize_t;
 // Using MATRIX_SIZE instead of SIZE to avoid Windows header conflicts
 #define MATRIX_SIZE 8192ul
 #define USEMEM 0.9 // Try to allocate 90% of memory
-#define COMPARE_KERNEL "compare.ptx"
+#define COMPARE_KERNEL "compare.fatbin"
 
 // Used to report op/s, measured through Visual Profiler, CUBLAS from CUDA 7.5
 // (Seems that they indeed take the naive dim^3 approach)
@@ -132,7 +132,7 @@ double getTime() {
     return (double)uli.QuadPart / 10000000.0 - 11644473600.0;
 }
 
-bool g_running = false;
+volatile bool g_running = false;
 
 template <class T> class GPU_Test {
   public:
@@ -163,6 +163,7 @@ template <class T> class GPU_Test {
         checkError(cuMemFree(d_Cdata), "Free A");
         checkError(cuMemFree(d_Adata), "Free B");
         checkError(cuMemFree(d_Bdata), "Free C");
+        checkError(cuMemFree(d_faultyElemData), "Free faulty data");
         cuMemFreeHost(d_faultyElemsHost);
         printf("Freed memory for dev %d\n", d_devNumber);
 
@@ -440,8 +441,8 @@ unsigned int __stdcall startBurnThread(void *arg) {
                 fprintf(stderr, "[GPU %d] Partial write to pipe: wrote %lu of %zu bytes\n", args->index, written, sizeof(int));
             }
             
-            // Flush to ensure data is written
-            FlushFileBuffers(args->writePipe);
+            // No FlushFileBuffers here, as it blocks until the reader reads the bytes,
+            // which causes a deadlock when the main thread stops reading to wait for thread exit.
         }
 
         for (int i = 0; i < maxEvents; ++i)
@@ -725,11 +726,31 @@ void listenClients(std::vector<HANDLE> clientHandles, std::vector<HANDLE> client
     fflush(stdout);
     g_running = false;
 
-    // Wait for threads to finish
-    std::this_thread::sleep_for(sigterm_timeout_threshold_secs);
+    // Wait for all threads to finish up to sigterm_timeout_threshold_secs
+    double timeoutSecs = (double)sigterm_timeout_threshold_secs.count();
+    auto startWait = std::chrono::steady_clock::now();
 
-    // Check if threads are still alive
-    std::vector<DWORD> threadIds;
+    if (clientThreads.size() <= MAXIMUM_WAIT_OBJECTS) {
+        DWORD timeoutMs = (DWORD)(timeoutSecs * 1000.0);
+        if (timeoutMs < 0) timeoutMs = 0;
+        WaitForMultipleObjects(
+            (DWORD)clientThreads.size(),
+            clientThreads.data(),
+            TRUE, // Wait for ALL threads
+            timeoutMs
+        );
+    } else {
+        // Sequentially wait for each thread with remaining timeout
+        for (size_t i = 0; i < clientThreads.size(); ++i) {
+            auto now = std::chrono::steady_clock::now();
+            double elapsed = std::chrono::duration<double>(now - startWait).count();
+            double remaining = timeoutSecs - elapsed;
+            DWORD timeoutMs = (remaining > 0.0) ? (DWORD)(remaining * 1000.0) : 0;
+            WaitForSingleObject(clientThreads[i], timeoutMs);
+        }
+    }
+
+    // Force terminate any threads that are still alive after the wait
     for (size_t i = 0; i < clientThreads.size(); ++i) {
         DWORD exitCode;
         if (GetExitCodeThread(clientThreads[i], &exitCode) && exitCode == STILL_ACTIVE) {
