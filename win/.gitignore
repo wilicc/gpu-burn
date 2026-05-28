@@ -32,3 +32,8 @@ cmake_install.cmake
 *.log
 *~
 
+# Packaging directories
+package/
+*.fatbin
+
+
