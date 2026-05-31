@@ -41,11 +41,13 @@ set(SOURCES
 # Fatbin file output
 set(FATBIN_FILE "${CMAKE_CURRENT_BINARY_DIR}/compare.fatbin")
 
-# Custom command to generate fatbin from CUDA kernel
+# Compile the shared CUDA kernel from the repository root
+set(COMPARE_CU "${CMAKE_CURRENT_SOURCE_DIR}/../compare.cu")
+
 add_custom_command(
     OUTPUT ${FATBIN_FILE}
-    COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" ${NVCC_FLAGS} "${CMAKE_CURRENT_SOURCE_DIR}/compare.cu" -o "${FATBIN_FILE}"
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/compare.cu
+    COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" ${NVCC_FLAGS} "${COMPARE_CU}" -o "${FATBIN_FILE}"
+    DEPENDS ${COMPARE_CU}
     COMMENT "Compiling CUDA kernel to fatbin"
     VERBATIM
 )
