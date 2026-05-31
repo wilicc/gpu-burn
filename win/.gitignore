@@ -1,0 +1,39 @@
+# Build directories
+build/
+Build/
+BUILD/
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+!CMakeLists.txt
+
+# Visual Studio files
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+
+# Compiled files
+*.exe
+*.obj
+*.o
+*.ptx
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Temporary files
+*.tmp
+*.log
+*~
+
+# Packaging directories
+package/
+*.fatbin
+
+
