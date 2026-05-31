@@ -576,14 +576,15 @@ void listenClients(std::vector<HANDLE> clientHandles, std::vector<HANDLE> client
     float nextReport = 10.0f;
     bool childReport = false;
     bool hasTempHandle = (tempHandle != INVALID_HANDLE_VALUE);
-    
-    // Use polling approach instead of WaitForMultipleObjects for pipes
-    // Windows pipes don't reliably trigger WaitForMultipleObjects
+
+    // Status line redraws on real events. Linux uses select() which wakes on
+    // pipe data; we poll every 50ms and have to track that manually here.
     while (true) {
         time_t thisTime = time(0);
         if (startTime + runTime < thisTime)
             break;
-        
+
+        bool newData = false;
         // Poll all client pipes for data
         for (size_t i = 0; i < clientHandles.size(); ++i) {
             DWORD bytesAvailable = 0;
@@ -630,6 +631,7 @@ void listenClients(std::vector<HANDLE> clientHandles, std::vector<HANDLE> client
                                 clientCalcs.at(i) += processed;
                             }
                             childReport = true;
+                            newData = true;
                         } else {
                             // Failed to read errors, but we already read processed
                             // This shouldn't happen, but handle it
@@ -655,13 +657,16 @@ void listenClients(std::vector<HANDLE> clientHandles, std::vector<HANDLE> client
             DWORD bytesAvailable = 0;
             if (PeekNamedPipe(tempHandle, NULL, 0, NULL, &bytesAvailable, NULL) && bytesAvailable > 0) {
                 updateTemps(tempHandle, &clientTemp);
+                // No newData here: nvidia-smi dumps ~50 lines per poll
+                // cycle, and we drain one per iteration. Setting newData
+                // would redraw the status line on every Sleep(50).
+                // The new temp shows up on the next client report.
             }
         }
-        
-        // Print progress only if we received new data from child threads
-        bool shouldPrint = childReport;
-        
-        if (shouldPrint) {
+
+        // Only redraw the status line when something actually changed this
+        // iteration; otherwise we'd spam ~20 identical lines per second.
+        if (childReport && newData) {
             float elapsed = fminf((float)(thisTime - startTime) / (float)runTime * 100.0f, 100.0f);
             printf("\r%.1f%%  ", elapsed);
             fflush(stdout);
