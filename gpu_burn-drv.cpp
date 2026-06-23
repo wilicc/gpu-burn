@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <errno.h>
 #include <exception>
@@ -183,6 +184,30 @@ template <class T> class GPU_Test {
             useBytes = (ssize_t)((double)availMemory() * USEMEM);
         if (useBytes < 0)
             useBytes = (ssize_t)((double)availMemory() * (-useBytes / 100.0));
+
+        // GB300 / Grace-Blackwell fix: the single giant cuMemAlloc below
+        // (d_iters * d_resultSize, i.e. ~useBytes — hundreds of GB on
+        // unified-memory parts) makes the driver's hardware memory scrubber
+        // time out (NVRM mem_scrub.c:558, 30s limit) and the kernel soft-lock
+        // in clear_page; cuMemAlloc then returns out-of-memory ("C alloc") and
+        // the test DIEs. Optionally cap the single allocation via the
+        // GPU_BURN_MAX_ALLOC_GB env var so the block stays small enough to be
+        // scrubbed within the timeout. Per-iteration GEMM stress is unchanged
+        // (still full SIZE^3); only the result-buffer iteration count shrinks.
+        // Unset or <= 0 keeps the original (allocate-everything) behaviour.
+        if (const char *capEnv = getenv("GPU_BURN_MAX_ALLOC_GB")) {
+            double capGb = atof(capEnv);
+            if (capGb > 0.0) {
+                ssize_t capBytes = (ssize_t)(capGb * 1024.0 * 1024.0 * 1024.0);
+                if (capBytes > 0 && useBytes > capBytes) {
+                    printf("Capping allocation to %.1f GB "
+                           "(GPU_BURN_MAX_ALLOC_GB) to avoid scrubber timeout "
+                           "on large single allocations\n",
+                           capGb);
+                    useBytes = capBytes;
+                }
+            }
+        }
 
         printf("Initialized device %d with %lu MB of memory (%lu MB available, "
                "using %lu MB of it), %s%s\n",
@@ -790,6 +815,19 @@ void showHelp() {
     printf("-stts T\tSet timeout threshold to T seconds for using SIGTERM to abort child processes before using SIGKILL.  Default is %d\n",
            SIGTERM_TIMEOUT_THRESHOLD_SECS);
     printf("-h\tShow this help message\n\n");
+    printf("Environment:\n");
+    printf("  GPU_BURN_MAX_ALLOC_GB=N  Cap the single result-buffer "
+           "allocation to N GB.\n");
+    printf("                           Avoids the driver memory-scrubber "
+           "timeout / soft\n");
+    printf("                           lockup seen with very large single "
+           "allocations on\n");
+    printf("                           unified-memory GPUs (e.g. GH/GB "
+           "Grace-Blackwell).\n");
+    printf("                           Unset or <=0 keeps the default "
+           "allocate-everything\n");
+    printf("                           behaviour. Per-iteration GEMM stress "
+           "is unchanged.\n\n");
     printf("Examples:\n");
     printf("  gpu-burn -d 3600 # burns all GPUs with doubles for an hour\n");
     printf(

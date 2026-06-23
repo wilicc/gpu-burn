@@ -98,3 +98,24 @@ can be set to change the resulting image tag:
     Example:
     gpu_burn -d 3600
 ```
+
+### Large single-allocation timeout on unified-memory GPUs (GH/GB)
+
+On Grace-Blackwell / Grace-Hopper unified-memory parts (e.g. GB200/GB300),
+gpu-burn allocates the result buffer as **one** giant `cuMemAlloc`
+(`useBytes`, i.e. ~90% of memory by default — hundreds of GB). On these parts
+that single allocation can make the driver's hardware memory scrubber time out
+(`NVRM ... mem_scrub.c`, 30s limit) and the kernel soft-lock in `clear_page`;
+`cuMemAlloc` then returns out-of-memory (reported as `C alloc`) and the run
+DIEs — reproducible even without any concurrent memory pressure.
+
+Set `GPU_BURN_MAX_ALLOC_GB` to cap the single allocation so the block stays
+small enough to be scrubbed within the timeout:
+
+```plain
+GPU_BURN_MAX_ALLOC_GB=24 gpu_burn -tc 3600
+```
+
+Unset or `<=0` keeps the default allocate-everything behaviour. Per-iteration
+GEMM stress is unchanged (still full `SIZE^3`); only the number of result-buffer
+iterations shrinks, so compute/thermal/power load is effectively the same.
