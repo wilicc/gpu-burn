@@ -17,6 +17,11 @@ cd gpu-burn
 docker build -t gpu-burn .
 docker run --rm --gpus all gpu-burn
 ```
+By default the container burns for 60 seconds.  To pass [options](#usage), give the full command:
+
+```plain
+docker run --rm --gpus all gpu-burn ./gpu_burn -m 50% 3600
+```
 You can pass build arguments to specify the CUDA version, the compute capability, and base image distro, e.g.:
 
 ```plain

@@ -19,5 +19,4 @@ COPY --from=builder /build/compare.fatbin /app/
 
 WORKDIR /app
 
-ENTRYPOINT ["./gpu_burn"]
-CMD ["60"]
+CMD ["./gpu_burn", "60"]
