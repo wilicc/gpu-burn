@@ -336,8 +336,9 @@ int initCuda() {
             initErrStr == nullptr) {
                 initErrStr = "<unavailable>";
             }
-        fprintf(stderr, "cuInit returned %d (%s)\n", initResult,
-            initErrStr);
+        if (initResult != CUDA_SUCCESS)
+            fprintf(stderr, "cuInit returned %d (%s)\n", initResult,
+                initErrStr);
         checkError(initResult);
     } catch (std::runtime_error e) {
         fprintf(stderr, "Couldn't init CUDA: %s\n", e.what());
