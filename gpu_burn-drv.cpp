@@ -60,6 +60,11 @@
 
 #define SIGTERM_TIMEOUT_THRESHOLD_SECS 30 // number of seconds for sigterm to kill child processes before forcing a sigkill
 
+#ifndef IS_JETSON
+#define IS_JETSON false
+#endif
+constexpr bool isJetson = IS_JETSON;
+
 #include "cublas_v2.h"
 #define CUDA_ENABLE_DEPRECATED
 #include <cuda.h>
@@ -397,14 +402,14 @@ int pollTemp(pid_t *p) {
     if (!myPid) {
         close(tempPipe[0]);
         dup2(tempPipe[1], STDOUT_FILENO);
-#if IS_JETSON
-        execlp("tegrastats", "tegrastats", "--interval", "5000", NULL);
-        fprintf(stderr, "Could not invoke tegrastats, no temps available\n");
-#else
-        execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d", "TEMPERATURE",
-               NULL);
-        fprintf(stderr, "Could not invoke nvidia-smi, no temps available\n");
-#endif
+        if (isJetson) {
+            execlp("tegrastats", "tegrastats", "--interval", "5000", NULL);
+            fprintf(stderr, "Could not invoke tegrastats, no temps available\n");
+        } else {
+            execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d",
+                   "TEMPERATURE", NULL);
+            fprintf(stderr, "Could not invoke nvidia-smi, no temps available\n");
+        }
 
         exit(ENODEV);
     }
@@ -427,31 +432,31 @@ void updateTemps(int handle, std::vector<int> *temps) {
 
     data[curPos - 1] = 0;
 
-#if IS_JETSON
-    std::string data_str(data);
-    std::regex pattern("GPU@([0-9]+)C");
-    std::smatch matches;
-    if (std::regex_search(data_str, matches, pattern)) {
-        if (matches.size() > 1) {
-            int tempValue = std::stoi(matches[1]);
+    if (isJetson) {
+        std::string data_str(data);
+        std::regex pattern("GPU@([0-9]+)C");
+        std::smatch matches;
+        if (std::regex_search(data_str, matches, pattern)) {
+            if (matches.size() > 1) {
+                int tempValue = std::stoi(matches[1]);
+                temps->at(gpuIter) = tempValue;
+                gpuIter = (gpuIter + 1) % (temps->size());
+            }
+        }
+    } else {
+        // FIXME: The syntax of this print might change in the future..
+        int tempValue;
+        if (sscanf(data,
+                   "		GPU Current Temp			: %d C",
+                   &tempValue) == 1) {
             temps->at(gpuIter) = tempValue;
             gpuIter = (gpuIter + 1) % (temps->size());
-        }
+        } else if (!strcmp(data, "		Gpu				"
+                                 "	 : N/A"))
+            gpuIter =
+                (gpuIter + 1) %
+                (temps->size()); // We rotate the iterator for N/A values as well
     }
-#else
-    // FIXME: The syntax of this print might change in the future..
-    int tempValue;
-    if (sscanf(data,
-               "		GPU Current Temp			: %d C",
-               &tempValue) == 1) {
-        temps->at(gpuIter) = tempValue;
-        gpuIter = (gpuIter + 1) % (temps->size());
-    } else if (!strcmp(data, "		Gpu				"
-                             "	 : N/A"))
-        gpuIter =
-            (gpuIter + 1) %
-            (temps->size()); // We rotate the iterator for N/A values as well
-#endif
 }
 
 void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
@@ -669,14 +674,14 @@ template <class T>
 void launch(int runLength, bool useDoubles, bool useTensorCores,
             ssize_t useBytes, int device_id, const char * kernelFile,
             std::chrono::seconds sigterm_timeout_threshold_secs) {
-#if IS_JETSON
-    std::ifstream f_model("/proc/device-tree/model");
-    std::stringstream ss_model;
-    ss_model << f_model.rdbuf();
-    printf("%s\n", ss_model.str().c_str());
-#else
-    system("nvidia-smi -L");
-#endif
+    if (isJetson) {
+        std::ifstream f_model("/proc/device-tree/model");
+        std::stringstream ss_model;
+        ss_model << f_model.rdbuf();
+        printf("%s\n", ss_model.str().c_str());
+    } else {
+        system("nvidia-smi -L");
+    }
 
     // Initting A and B with random data
     T *A = (T *)malloc(sizeof(T) * SIZE * SIZE);
