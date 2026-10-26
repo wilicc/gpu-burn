@@ -46,6 +46,7 @@
 #include <fstream>
 #include <map>
 #include <signal.h>
+#include <sstream>
 #include <stdexcept>
 #include <string.h>
 #include <string>
