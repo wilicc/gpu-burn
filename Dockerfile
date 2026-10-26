@@ -15,7 +15,6 @@ RUN make COMPUTE=${COMPUTE}
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-${IMAGE_DISTRO}
 
 COPY --from=builder /build/gpu_burn /app/
-COPY --from=builder /build/compare.fatbin /app/
 
 WORKDIR /app
 

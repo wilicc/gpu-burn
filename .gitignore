@@ -4,3 +4,5 @@ gpu_burn-drv\.o
 compare\.ptx
 
 gpu_burn
+
+compare_fatbin\.h

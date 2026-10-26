@@ -6,6 +6,7 @@ endif
 
 IS_JETSON   ?= $(shell if grep -Fwq "Jetson" /proc/device-tree/model 2>/dev/null; then echo true; else echo false; fi)
 NVCC        :=  ${CUDAPATH}/bin/nvcc
+BIN2C       :=  $(dir ${NVCC})bin2c
 CCPATH      ?=
 
 override CFLAGS   ?=
@@ -39,18 +40,24 @@ endif
 IMAGE_NAME ?= gpu-burn
 
 .PHONY: clean
+.DELETE_ON_ERROR:
 
-gpu_burn: gpu_burn-drv.o compare.fatbin
+gpu_burn: gpu_burn-drv.o
 	g++ -o $@ $< -O3 ${LDFLAGS}
+
+gpu_burn-drv.o: compare_fatbin.h
 
 %.o: %.cpp
 	g++ ${CFLAGS} -c $<
+
+compare_fatbin.h: compare.fatbin
+	${BIN2C} --const --name compare_fatbin $< > $@
 
 %.fatbin: %.cu
 	PATH="${PATH}:${CCPATH}:." ${NVCC} ${NVCCFLAGS} -fatbin $< -o $@
 
 clean:
-	$(RM) *.fatbin *.o gpu_burn
+	$(RM) *.fatbin *.o compare_fatbin.h gpu_burn
 
 image:
 	docker build --build-arg COMPUTE=${COMPUTE} --build-arg CUDA_VERSION=${CUDA_VERSION} --build-arg IMAGE_DISTRO=${IMAGE_DISTRO} -t ${IMAGE_NAME} .

@@ -30,7 +30,6 @@
 // Matrices are SIZE*SIZE..  POT should be efficiently implemented in CUBLAS
 #define SIZE 8192ul
 #define USEMEM 0.9 // Try to allocate 90% of memory
-#define COMPARE_KERNEL "compare.fatbin"
 
 // Used to report op/s, measured through Visual Profiler, CUBLAS from CUDA 7.5
 // (Seems that they indeed take the naive dim^3 approach)
@@ -63,6 +62,8 @@
 #include "cublas_v2.h"
 #define CUDA_ENABLE_DEPRECATED
 #include <cuda.h>
+
+#include "compare_fatbin.h"
 
 void _checkError(int rCode, std::string file, int line, std::string desc = "") {
     if (rCode != CUDA_SUCCESS) {
@@ -236,12 +237,14 @@ template <class T> class GPU_Test {
     }
 
     void initCompareKernel() {
-        {
+        if (d_kernelFile) {
             std::ifstream f(d_kernelFile);
             checkError(f.good() ? CUDA_SUCCESS : CUDA_ERROR_NOT_FOUND,
                        std::string("couldn't find compare kernel: ") + d_kernelFile);
+            checkError(cuModuleLoad(&d_module, d_kernelFile), "load module");
+        } else {
+            checkError(cuModuleLoadData(&d_module, compare_fatbin), "load module");
         }
-        checkError(cuModuleLoad(&d_module, d_kernelFile), "load module");
         checkError(cuModuleGetFunction(&d_function, d_module,
                                        d_doubles ? "compareD" : "compare"),
                    "get func");
@@ -786,8 +789,7 @@ void showHelp() {
     printf("-tc\tTry to use Tensor cores\n");
     printf("-l\tLists all GPUs in the system\n");
     printf("-i N\tExecute only on GPU N\n");
-    printf("-c FILE\tUse FILE as compare kernel.  Default is %s\n",
-           COMPARE_KERNEL);
+    printf("-c FILE\tUse FILE as compare kernel instead of the built-in one\n");
     printf("-stts T\tSet timeout threshold to T seconds for using SIGTERM to abort child processes before using SIGKILL.  Default is %d\n",
            SIGTERM_TIMEOUT_THRESHOLD_SECS);
     printf("-h\tShow this help message\n\n");
@@ -819,7 +821,7 @@ int main(int argc, char **argv) {
     int thisParam = 0;
     ssize_t useBytes = 0; // 0 == use USEMEM% of free mem
     int device_id = -1;
-    char *kernelFile = (char *)COMPARE_KERNEL;
+    const char *kernelFile = nullptr;
     std::chrono::seconds sigterm_timeout_threshold_secs = std::chrono::seconds(SIGTERM_TIMEOUT_THRESHOLD_SECS);
 
     std::vector<std::string> args(argv, argv + argc);
@@ -911,7 +913,8 @@ int main(int argc, char **argv) {
         printf("Run length not specified in the command line. ");
     else
         runLength = atoi(argv[1 + thisParam]);
-    printf("Using compare file: %s\n", kernelFile);
+    if (kernelFile)
+        printf("Using compare file: %s\n", kernelFile);
     printf("Burning for %d seconds.\n", runLength);
 
     if (useDoubles)
