@@ -24,6 +24,8 @@ GPU Burn
 \fB\-stts\fR T Set timeout threshold to T seconds for using SIGTERM to abort child processes before using SIGKILL.  Default is 30
 .br
 \fB\-h\fR      Show this help message
+.SH "EXIT STATUS"
+0 if every GPU passed, 1 if any GPU is reported FAULTY.  Other non-zero values mean the test could not run.
 .SH EXAMPLES
 .IP
 gpu\-burn \-d 3600 # burns all GPUs with doubles for an hour

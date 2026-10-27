@@ -103,3 +103,5 @@ can be set to change the resulting image tag:
     Example:
     gpu_burn -d 3600
 ```
+
+`gpu_burn` exits with status 0 if every GPU passed and 1 if any GPU is reported FAULTY. Other non-zero values mean the test could not run.

@@ -454,8 +454,8 @@ void updateTemps(int handle, std::vector<int> *temps) {
 #endif
 }
 
-void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
-                   int runTime, std::chrono::seconds sigterm_timeout_threshold_secs) {
+int listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
+                  int runTime, std::chrono::seconds sigterm_timeout_threshold_secs) {
     fd_set waitHandles;
 
     pid_t tempPid;
@@ -663,12 +663,16 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
     printf("\nTested %d GPUs:\n", (int)clientPid.size());
     for (size_t i = 0; i < clientPid.size(); ++i)
         printf("\tGPU %d: %s\n", (int)i, clientFaulty.at(i) ? "FAULTY" : "OK");
+
+    bool anyFaulty = std::find(clientFaulty.begin(), clientFaulty.end(), true) !=
+                     clientFaulty.end();
+    return anyFaulty ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
 template <class T>
-void launch(int runLength, bool useDoubles, bool useTensorCores,
-            ssize_t useBytes, int device_id, const char * kernelFile,
-            std::chrono::seconds sigterm_timeout_threshold_secs) {
+int launch(int runLength, bool useDoubles, bool useTensorCores,
+           ssize_t useBytes, int device_id, const char * kernelFile,
+           std::chrono::seconds sigterm_timeout_threshold_secs) {
 #if IS_JETSON
     std::ifstream f_model("/proc/device-tree/model");
     std::stringstream ss_model;
@@ -695,6 +699,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
     std::vector<int> clientPipes;
     std::vector<pid_t> clientPids;
     clientPipes.push_back(readMain);
+    int exitStatus = EXIT_SUCCESS;
 
     if (device_id > -1) {
         pid_t myPid = fork();
@@ -708,13 +713,13 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             startBurn<T>(device_id, writeFd, A, B, useDoubles, useTensorCores,
                          useBytes, kernelFile);
             close(writeFd);
-            return;
+            return EXIT_SUCCESS;
         } else {
             clientPids.push_back(myPid);
             close(mainPipe[1]);
             int devCount;
             read(readMain, &devCount, sizeof(int));
-            listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
+            exitStatus = listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
             close(clientPipes.at(i));
@@ -731,7 +736,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
                          useBytes, kernelFile);
 
             close(writeFd);
-            return;
+            return EXIT_SUCCESS;
         } else {
             clientPids.push_back(myPid);
 
@@ -758,14 +763,14 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
                                      useTensorCores, useBytes, kernelFile);
 
                         close(slavePipe[1]);
-                        return;
+                        return EXIT_SUCCESS;
                     } else {
                         clientPids.push_back(slavePid);
                         close(slavePipe[1]);
                     }
                 }
 
-                listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
+                exitStatus = listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
             }
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
@@ -774,6 +779,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
 
     free(A);
     free(B);
+    return exitStatus;
 }
 
 void showHelp() {
@@ -915,11 +921,11 @@ int main(int argc, char **argv) {
     printf("Burning for %d seconds.\n", runLength);
 
     if (useDoubles)
-        launch<double>(runLength, useDoubles, useTensorCores, useBytes,
-                       device_id, kernelFile, sigterm_timeout_threshold_secs);
+        return launch<double>(runLength, useDoubles, useTensorCores, useBytes,
+                              device_id, kernelFile,
+                              sigterm_timeout_threshold_secs);
     else
-        launch<float>(runLength, useDoubles, useTensorCores, useBytes,
-                      device_id, kernelFile, sigterm_timeout_threshold_secs);
-
-    return 0;
+        return launch<float>(runLength, useDoubles, useTensorCores, useBytes,
+                             device_id, kernelFile,
+                             sigterm_timeout_threshold_secs);
 }
