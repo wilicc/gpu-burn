@@ -513,10 +513,11 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
                 // Then errors
                 read(clientFd.at(i), &errors, sizeof(int));
 
-                clientErrors.at(i) += errors;
-                if (processed == -1)
+                if (processed == -1) {
                     clientCalcs.at(i) = -1;
-                else {
+                    clientFaulty.at(i) = true;
+                } else {
+                    clientErrors.at(i) += errors;
                     double flops = (double)processed * (double)OPS_PER_MUL;
                     struct timespec clientPrevTime = clientUpdateTime.at(i);
                     double clientTimeDelta =
