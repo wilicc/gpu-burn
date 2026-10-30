@@ -64,10 +64,16 @@
 #define CUDA_ENABLE_DEPRECATED
 #include <cuda.h>
 
+const char *errorString(CUresult rCode) {
+    const char *err = nullptr;
+    if (cuGetErrorString(rCode, &err) != CUDA_SUCCESS || err == nullptr)
+        return "<unavailable>";
+    return err;
+}
+
 void _checkError(int rCode, std::string file, int line, std::string desc = "") {
     if (rCode != CUDA_SUCCESS) {
-        const char *err;
-        cuGetErrorString((CUresult)rCode, &err);
+        const char *err = errorString((CUresult)rCode);
 
         throw std::runtime_error(
             (desc == "" ? std::string("Error (")
@@ -307,14 +313,9 @@ template <class T> class GPU_Test {
 int initCuda() {
     try {
         CUresult initResult = cuInit(0);
-        const char *initErrStr = "<unavailable>";
-        if (cuGetErrorString(initResult, &initErrStr) != CUDA_SUCCESS ||
-            initErrStr == nullptr) {
-                initErrStr = "<unavailable>";
-            }
         if (initResult != CUDA_SUCCESS)
             fprintf(stderr, "cuInit returned %d (%s)\n", initResult,
-                initErrStr);
+                errorString(initResult));
         checkError(initResult);
     } catch (std::runtime_error e) {
         fprintf(stderr, "Couldn't init CUDA: %s\n", e.what());
