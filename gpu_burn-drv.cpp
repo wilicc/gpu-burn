@@ -737,7 +737,8 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
 
             close(mainPipe[1]);
             int devCount;
-            read(readMain, &devCount, sizeof(int));
+            if (read(readMain, &devCount, sizeof(int)) != sizeof(int))
+                devCount = 0;
 
             if (!devCount) {
                 fprintf(stderr, "No CUDA devices\n");
