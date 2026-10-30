@@ -454,6 +454,28 @@ void updateTemps(int handle, std::vector<int> *temps) {
 #endif
 }
 
+void printStatusTable(float elapsed, const std::vector<int> &calcs,
+                      const std::vector<float> &gflops,
+                      const std::vector<int> &errors,
+                      const std::vector<int> &temps) {
+    printf("%5.1f%%  GPU  Gflop/s     iters  errors  temp\n", elapsed);
+    for (size_t i = 0; i < calcs.size(); ++i) {
+        char temp[16] = "--";
+        if (temps.at(i) != 0)
+            snprintf(temp, sizeof(temp), "%d C", temps.at(i));
+
+        const char *note = "";
+        if (calcs.at(i) == -1)
+            note = "  DIED!";
+        else if (errors.at(i))
+            note = "  WARNING!";
+
+        printf("        %3zu  %7.0f  %8d  %6d  %4s%s\n", i, gflops.at(i),
+               calcs.at(i), errors.at(i), temp, note);
+    }
+    fflush(stdout);
+}
+
 void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
                    int runTime, std::chrono::seconds sigterm_timeout_threshold_secs) {
     fd_set waitHandles;
@@ -494,6 +516,8 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
     int changeCount;
     float nextReport = 10.0f;
     bool childReport = false;
+    bool statusOnTerminal = isatty(STDOUT_FILENO);
+    size_t statusRowsOnScreen = 0;
     while (
         (changeCount = select(maxHandle + 1, &waitHandles, NULL, NULL, NULL))) {
         size_t thisTime = time(0);
@@ -550,35 +574,13 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
             float elapsed =
                 fminf((float)(thisTime - startTime) / (float)runTime * 100.0f,
                       100.0f);
-            printf("\r%.1f%%  ", elapsed);
-            printf("proc'd: ");
-            for (size_t i = 0; i < clientCalcs.size(); ++i) {
-                printf("%d (%.0f Gflop/s) ", clientCalcs.at(i),
-                       clientGflops.at(i));
-                if (i != clientCalcs.size() - 1)
-                    printf("- ");
+            if (statusOnTerminal) {
+                if (statusRowsOnScreen)
+                    printf("\r\033[%zuA\033[J", statusRowsOnScreen);
+                printStatusTable(elapsed, clientCalcs, clientGflops,
+                                 clientErrors, clientTemp);
+                statusRowsOnScreen = clientCalcs.size() + 1;
             }
-            printf("  errors: ");
-            for (size_t i = 0; i < clientErrors.size(); ++i) {
-                std::string note = "%d ";
-                if (clientCalcs.at(i) == -1)
-                    note += " (DIED!)";
-                else if (clientErrors.at(i))
-                    note += " (WARNING!)";
-
-                printf(note.c_str(), clientErrors.at(i));
-                if (i != clientCalcs.size() - 1)
-                    printf("- ");
-            }
-            printf("  temps: ");
-            for (size_t i = 0; i < clientTemp.size(); ++i) {
-                printf(clientTemp.at(i) != 0 ? "%d C " : "-- ",
-                       clientTemp.at(i));
-                if (i != clientCalcs.size() - 1)
-                    printf("- ");
-            }
-
-            fflush(stdout);
 
             for (size_t i = 0; i < clientErrors.size(); ++i)
                 if (clientErrors.at(i))
@@ -586,7 +588,11 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
 
             if (nextReport < elapsed) {
                 nextReport = elapsed + 10.0f;
-                printf("\n\tSummary at:   ");
+                if (!statusOnTerminal)
+                    printStatusTable(elapsed, clientCalcs, clientGflops,
+                                     clientErrors, clientTemp);
+                statusRowsOnScreen = 0;
+                printf("\tSummary at:   ");
                 fflush(stdout);
                 system("date"); // Printing a date
                 fflush(stdout);
