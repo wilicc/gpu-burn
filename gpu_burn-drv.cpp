@@ -813,6 +813,8 @@ ssize_t decodeUSEMEM(const char *s) {
 }
 
 int main(int argc, char **argv) {
+    setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
+
     int runLength = 10;
     bool useDoubles = false;
     bool useTensorCores = false;
