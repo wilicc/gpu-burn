@@ -57,6 +57,7 @@
 #include <unistd.h>
 #include <vector>
 #include <regex>
+#include "temperature_mapping.h"
 
 #define SIGTERM_TIMEOUT_THRESHOLD_SECS 30 // number of seconds for sigterm to kill child processes before forcing a sigkill
 
@@ -388,6 +389,46 @@ void startBurn(int index, int writeFd, T *A, T *B, bool doubles, bool tensors,
     }
 }
 
+// Send the UUID of the CUDA device used by each worker. CUDA ordinals can
+// differ from the physical device ordering returned by nvidia-smi.
+void writeDeviceUuid(int fd, int deviceId) {
+#if IS_JETSON
+    // Preserve Jetson's existing tegrastats-only temperature path.
+    (void)fd;
+    (void)deviceId;
+#else
+    CUdevice device;
+    CUuuid uuid;
+    checkError(cuDeviceGet(&device, deviceId));
+    checkError(cuDeviceGetUuid(&uuid, device));
+    if (write(fd, &uuid, sizeof(uuid)) != sizeof(uuid))
+        throw std::runtime_error("Couldn't send CUDA device UUID");
+#endif
+}
+
+std::vector<std::string> readDeviceUuids(const std::vector<int> &fds) {
+#if IS_JETSON
+    return std::vector<std::string>(fds.size());
+#else
+    std::vector<std::string> uuids;
+    for (size_t i = 0; i < fds.size(); ++i) {
+        CUuuid uuid;
+        size_t received = 0;
+        while (received < sizeof(uuid)) {
+            ssize_t count = read(fds[i],
+                                 reinterpret_cast<char *>(&uuid) + received,
+                                 sizeof(uuid) - received);
+            if (count <= 0)
+                throw std::runtime_error("Couldn't receive CUDA device UUID");
+            received += static_cast<size_t>(count);
+        }
+        uuids.push_back(temperature_mapping::gpuUuid(
+            reinterpret_cast<const unsigned char *>(uuid.bytes)));
+    }
+    return uuids;
+#endif
+}
+
 int pollTemp(pid_t *p) {
     int tempPipe[2];
     pipe(tempPipe);
@@ -401,8 +442,8 @@ int pollTemp(pid_t *p) {
         execlp("tegrastats", "tegrastats", "--interval", "5000", NULL);
         fprintf(stderr, "Could not invoke tegrastats, no temps available\n");
 #else
-        execlp("nvidia-smi", "nvidia-smi", "-l", "5", "-q", "-d", "TEMPERATURE",
-               NULL);
+        execlp("nvidia-smi", "nvidia-smi", "--query-gpu=uuid,temperature.gpu",
+               "--format=csv,noheader,nounits", "-l", "5", NULL);
         fprintf(stderr, "Could not invoke nvidia-smi, no temps available\n");
 #endif
 
@@ -415,9 +456,12 @@ int pollTemp(pid_t *p) {
     return tempPipe[0];
 }
 
-void updateTemps(int handle, std::vector<int> *temps) {
+void updateTemps(int handle, std::vector<int> *temps,
+                 const std::vector<std::string> &clientUuids) {
     const int readSize = 10240;
+#if IS_JETSON
     static int gpuIter = 0;
+#endif
     char data[readSize + 1];
 
     int curPos = 0;
@@ -428,6 +472,7 @@ void updateTemps(int handle, std::vector<int> *temps) {
     data[curPos - 1] = 0;
 
 #if IS_JETSON
+    (void)clientUuids;
     std::string data_str(data);
     std::regex pattern("GPU@([0-9]+)C");
     std::smatch matches;
@@ -439,23 +484,13 @@ void updateTemps(int handle, std::vector<int> *temps) {
         }
     }
 #else
-    // FIXME: The syntax of this print might change in the future..
-    int tempValue;
-    if (sscanf(data,
-               "		GPU Current Temp			: %d C",
-               &tempValue) == 1) {
-        temps->at(gpuIter) = tempValue;
-        gpuIter = (gpuIter + 1) % (temps->size());
-    } else if (!strcmp(data, "		Gpu				"
-                             "	 : N/A"))
-        gpuIter =
-            (gpuIter + 1) %
-            (temps->size()); // We rotate the iterator for N/A values as well
+    temperature_mapping::applyTemperatureRow(data, clientUuids, temps);
 #endif
 }
 
 void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
-                   int runTime, std::chrono::seconds sigterm_timeout_threshold_secs) {
+                   int runTime, std::chrono::seconds sigterm_timeout_threshold_secs,
+                   const std::vector<std::string> &clientUuids) {
     fd_set waitHandles;
 
     pid_t tempPid;
@@ -537,7 +572,7 @@ void listenClients(std::vector<int> clientFd, std::vector<pid_t> clientPid,
             }
 
         if (FD_ISSET(tempHandle, &waitHandles))
-            updateTemps(tempHandle, &clientTemp);
+            updateTemps(tempHandle, &clientTemp, clientUuids);
 
         // Resetting the listeners
         FD_ZERO(&waitHandles);
@@ -705,6 +740,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             initCuda();
             int devCount = 1;
             write(writeFd, &devCount, sizeof(int));
+            writeDeviceUuid(writeFd, device_id);
             startBurn<T>(device_id, writeFd, A, B, useDoubles, useTensorCores,
                          useBytes, kernelFile);
             close(writeFd);
@@ -714,7 +750,9 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             close(mainPipe[1]);
             int devCount;
             read(readMain, &devCount, sizeof(int));
-            listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
+            listenClients(clientPipes, clientPids, runLength,
+                              sigterm_timeout_threshold_secs,
+                              readDeviceUuids(clientPipes));
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
             close(clientPipes.at(i));
@@ -726,6 +764,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
             int writeFd = mainPipe[1];
             int devCount = initCuda();
             write(writeFd, &devCount, sizeof(int));
+            writeDeviceUuid(writeFd, 0);
 
             startBurn<T>(0, writeFd, A, B, useDoubles, useTensorCores,
                          useBytes, kernelFile);
@@ -754,6 +793,7 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
                         // Child
                         close(slavePipe[0]);
                         initCuda();
+                        writeDeviceUuid(slavePipe[1], i);
                         startBurn<T>(i, slavePipe[1], A, B, useDoubles,
                                      useTensorCores, useBytes, kernelFile);
 
@@ -765,7 +805,9 @@ void launch(int runLength, bool useDoubles, bool useTensorCores,
                     }
                 }
 
-                listenClients(clientPipes, clientPids, runLength, sigterm_timeout_threshold_secs);
+                listenClients(clientPipes, clientPids, runLength,
+                              sigterm_timeout_threshold_secs,
+                              readDeviceUuids(clientPipes));
             }
         }
         for (size_t i = 0; i < clientPipes.size(); ++i)
